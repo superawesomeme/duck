@@ -304,6 +304,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <!-- GLTFLoader CDN -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- DRACOLoader CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
     
     <script>
         /**
@@ -782,44 +784,55 @@
         let loadedDuckModel = null;
         const loader = new THREE.GLTFLoader();
 
+        // Setup DRACOLoader for compressed meshes
+        const dracoLoader = new THREE.DRACOLoader();
+        // Use a CDN for the decoder libraries
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        loader.setDRACOLoader(dracoLoader);
+
         // LOAD EXTERNAL MODEL
         // We try to load 'models/duck.glb' from the 'models' subfolder.
         // If it fails (404), we fallback to procedural generation.
-        loader.load(
-            'models/duck.glb', 
-            function (gltf) {
-                loadedDuckModel = gltf.scene;
-                
-                // Pre-process: Enable shadows
-                loadedDuckModel.traverse(node => {
-                    if(node.isMesh) {
-                        node.castShadow = true;
-                        node.receiveShadow = true;
-                    }
-                });
-                
-                // Adjust scale: The standard Duck.glb is often ~100 units tall or 1 unit.
-                // We need it to be small (~2-3 units) to fit our track.
-                loadedDuckModel.scale.set(2.0, 2.0, 2.0); // Adjusted scale for standard glTF duck (usually very small or very large depending on export)
-                // Note: The Khronos duck is usually 1 meter tall. Our scale is arbitrary. 
-                // If it's too big/small, we adjust here. Let's try 2.0 based on common exports of that specific file.
-                // If it's the one from the three.js examples, it might need 0.02 or 200. 
-                // Let's stick to a safe 2.5 and rely on the user to adjust if their specific export scale varies.
-                loadedDuckModel.scale.set(2.5, 2.5, 2.5); 
+        try {
+            loader.load(
+                'models/duck.glb', 
+                function (gltf) {
+                    loadedDuckModel = gltf.scene;
+                    
+                    // Pre-process: Enable shadows
+                    loadedDuckModel.traverse(node => {
+                        if(node.isMesh) {
+                            node.castShadow = true;
+                            node.receiveShadow = true;
+                        }
+                    });
+                    
+                    // Adjust scale: The standard Duck.glb is often ~100 units tall or 1 unit.
+                    // We need it to be small (~2-3 units) to fit our track.
+                    loadedDuckModel.scale.set(2.0, 2.0, 2.0); // Adjusted scale for standard glTF duck (usually very small or very large depending on export)
+                    // Note: The Khronos duck is usually 1 meter tall. Our scale is arbitrary. 
+                    // If it's too big/small, we adjust here. Let's try 2.0 based on common exports of that specific file.
+                    // If it's the one from the three.js examples, it might need 0.02 or 200. 
+                    // Let's stick to a safe 2.5 and rely on the user to adjust if their specific export scale varies.
+                    loadedDuckModel.scale.set(2.5, 2.5, 2.5); 
 
-                loadedDuckModel.position.y = 0.5;
-                loadedDuckModel.rotation.y = -Math.PI / 2; // Face forward (+Z)
+                    loadedDuckModel.position.y = 0.5;
+                    loadedDuckModel.rotation.y = -Math.PI / 2; // Face forward (+Z)
 
-                console.log("Model loaded successfully from models/duck.glb!");
-                activateStartButton();
-            },
-            undefined, 
-            function (error) {
-                console.warn("Could not load 'models/duck.glb'. Falling back to built-in procedural duck.", error);
-                // Fallback to procedural
-                activateStartButton();
-            }
-        );
+                    console.log("Model loaded successfully from models/duck.glb!");
+                    activateStartButton();
+                },
+                undefined, 
+                function (error) {
+                    console.warn("Could not load 'models/duck.glb'. Falling back to built-in procedural duck.", error);
+                    // Fallback to procedural
+                    activateStartButton();
+                }
+            );
+        } catch (e) {
+            console.warn("Loader initialization failed:", e);
+            activateStartButton();
+        }
 
         function activateStartButton() {
             const btn = document.getElementById('start-btn');
@@ -1055,12 +1068,9 @@
          */
         const startScreen = document.getElementById('start-screen');
         const startBtn = document.getElementById('start-btn');
-        
-        // Start in disabled/loading state
-        startBtn.disabled = true;
-        startBtn.innerText = "LOADING...";
-        startBtn.style.background = "#ccc";
-        startBtn.style.cursor = "wait";
+        // Enable button immediately
+        startBtn.disabled = false;
+        startBtn.innerText = "START RACE";
 
         const endScreen = document.getElementById('end-screen');
         const restartBtn = document.getElementById('restart-btn');
