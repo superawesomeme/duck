@@ -782,52 +782,54 @@
         let loadedDuckModel = null;
         const loader = new THREE.GLTFLoader();
 
-        // -------------------------------------------------------------
-        // IF YOU HAVE A LOCAL FILE:
-        // 1. Uncomment the block below.
-        // 2. Ensure 'Duck.glb' is in a 'models' folder next to this file.
-        // 3. Run on a local server.
-        // -------------------------------------------------------------
-        
-        try {
-            loader.load(
-                'models/duck.glb', 
-                function (gltf) {
-                    loadedDuckModel = gltf.scene;
-                    loadedDuckModel.traverse(node => {
-                        if(node.isMesh) {
-                            node.castShadow = true;
-                            node.receiveShadow = true;
-                        }
-                    });
-                    loadedDuckModel.scale.set(0.02, 0.02, 0.02); 
-                    loadedDuckModel.position.y = 0.5;
-                    loadedDuckModel.rotation.y = -Math.PI / 2;
-                    console.log("Model loaded!");
-                    activateStartButton();
-                },
-                undefined, 
-                function (error) {
-                    console.warn("Model error, using procedural.", error);
-                    activateStartButton();
-                }
-            );
-        } catch (e) {
-            console.warn("Loader exception", e);
-            activateStartButton();
-        }
-        
-       
-       // Force enable because we are using procedural by default now
-       setTimeout(activateStartButton, 500);
+        // LOAD EXTERNAL MODEL
+        // We try to load 'models/duck.glb' from the 'models' subfolder.
+        // If it fails (404), we fallback to procedural generation.
+        loader.load(
+            'models/duck.glb', 
+            function (gltf) {
+                loadedDuckModel = gltf.scene;
+                
+                // Pre-process: Enable shadows
+                loadedDuckModel.traverse(node => {
+                    if(node.isMesh) {
+                        node.castShadow = true;
+                        node.receiveShadow = true;
+                    }
+                });
+                
+                // Adjust scale: The standard Duck.glb is often ~100 units tall or 1 unit.
+                // We need it to be small (~2-3 units) to fit our track.
+                loadedDuckModel.scale.set(2.0, 2.0, 2.0); // Adjusted scale for standard glTF duck (usually very small or very large depending on export)
+                // Note: The Khronos duck is usually 1 meter tall. Our scale is arbitrary. 
+                // If it's too big/small, we adjust here. Let's try 2.0 based on common exports of that specific file.
+                // If it's the one from the three.js examples, it might need 0.02 or 200. 
+                // Let's stick to a safe 2.5 and rely on the user to adjust if their specific export scale varies.
+                loadedDuckModel.scale.set(2.5, 2.5, 2.5); 
+
+                loadedDuckModel.position.y = 0.5;
+                loadedDuckModel.rotation.y = -Math.PI / 2; // Face forward (+Z)
+
+                console.log("Model loaded successfully from models/duck.glb!");
+                activateStartButton();
+            },
+            undefined, 
+            function (error) {
+                console.warn("Could not load 'models/duck.glb'. Falling back to built-in procedural duck.", error);
+                // Fallback to procedural
+                activateStartButton();
+            }
+        );
 
         function activateStartButton() {
             const btn = document.getElementById('start-btn');
             if (btn) {
                 btn.disabled = false;
                 btn.innerText = "START RACE";
+                btn.style.background = "linear-gradient(to bottom, #FFEB3B 0%, #FFC107 100%)";
+                btn.style.cursor = "pointer";
             }
-            initDucks(); // Re-init ducks
+            initDucks(); // Initialize ducks (using model or procedural fallback)
         }
 
         /**
@@ -1053,9 +1055,12 @@
          */
         const startScreen = document.getElementById('start-screen');
         const startBtn = document.getElementById('start-btn');
-        // Enable button immediately
-        startBtn.disabled = false;
-        startBtn.innerText = "START RACE";
+        
+        // Start in disabled/loading state
+        startBtn.disabled = true;
+        startBtn.innerText = "LOADING...";
+        startBtn.style.background = "#ccc";
+        startBtn.style.cursor = "wait";
 
         const endScreen = document.getElementById('end-screen');
         const restartBtn = document.getElementById('restart-btn');
@@ -1265,4 +1270,3 @@
     </script>
 </body>
 </html>
-
