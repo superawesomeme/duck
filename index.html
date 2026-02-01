@@ -278,7 +278,7 @@
         <div id="header"></div>
         
         <div id="leaderboard">
-            <div class="lb-header">🏆 Race Standings</div>
+           
             <div id="lb-content">
                 <!-- Populated via JS -->
             </div>
@@ -357,44 +357,17 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
-        
-        // Enable physically correct lighting for better materials
-        renderer.physicallyCorrectLights = true;
-        renderer.outputEncoding = THREE.sRGBEncoding;
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.0;
-        
         container.appendChild(renderer.domElement);
-
-        /**
-         * ENVIRONMENT & REFLECTIONS
-         */
-        // Generate a simple environment map for reflections since we can't load external HDRs easily
-        const pmremGenerator = new THREE.PMREMGenerator(renderer);
-        pmremGenerator.compileEquirectangularShader();
-        
-        // Create a simple room environment for reflections
-        const roomScene = new THREE.Scene();
-        roomScene.background = new THREE.Color(0x4FC3F7);
-        const floorGeo = new THREE.PlaneGeometry(100, 100);
-        const floorMat = new THREE.MeshBasicMaterial({color: 0x229922}); // Green reflection from bottom
-        const floor = new THREE.Mesh(floorGeo, floorMat);
-        floor.rotation.x = -Math.PI/2;
-        floor.position.y = -10;
-        roomScene.add(floor);
-        
-        const envMap = pmremGenerator.fromScene(roomScene).texture;
-        scene.environment = envMap; // Apply to scene for PBR materials
 
         /**
          * LIGHTING (CARTOON STYLE)
          */
         // Hemisphere light creates a nice sky/ground gradient fill
-        const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x080820, 2.0 ); // Increased intensity
+        const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x080820, 1.1 );
         scene.add( hemiLight );
 
         // Main directional light (Sun)
-        const dirLight = new THREE.DirectionalLight(0xffffff, 3.0); // Increased intensity
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
         dirLight.position.set(50, 150, 50);
         dirLight.castShadow = true;
         
@@ -415,72 +388,17 @@
         scene.add(dirLight);
 
         /**
-         * PROCEDURAL TEXTURES
+         * WATER SHADER (Updated with Fog)
          */
-        function createGrassTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            
-            // Base Green
-            ctx.fillStyle = '#76FF03';
-            ctx.fillRect(0,0,512,512);
-            
-            // Noise
-            for(let i=0; i<40000; i++) {
-                ctx.fillStyle = Math.random() > 0.5 ? '#64DD17' : '#9E9D24'; // Darker greens
-                const x = Math.random() * 512;
-                const y = Math.random() * 512;
-                const w = Math.random() * 3 + 1;
-                const h = Math.random() * 3 + 1;
-                ctx.fillRect(x,y,w,h);
-            }
-            
-            const tex = new THREE.CanvasTexture(canvas);
-            tex.wrapS = THREE.RepeatWrapping;
-            tex.wrapT = THREE.RepeatWrapping;
-            tex.repeat.set(20, 80);
-            return tex;
-        }
-        
-        const grassTexture = createGrassTexture();
+        const waterVertexShader = `
+            uniform float time;
+            varying vec2 vUv;
+            varying float vElevation;
+            #include <fog_pars_vertex>
 
-        /**
-         * WATER SHADER (Standard Material with Displacement)
-         */
-        // We use MeshPhysicalMaterial for real reflections/transmission
-        // But we inject the vertex displacement logic from before
-        
-        const waterGeo = new THREE.PlaneGeometry(160, 4000, 60, 250); 
-        
-        const waterMat = new THREE.MeshPhysicalMaterial({
-            color: CONFIG.waterColor,
-            roughness: 0.2,
-            metalness: 0.1,
-            transmission: 0.6, // Glass-like transparency
-            thickness: 1.5,
-            envMap: envMap,
-            envMapIntensity: 1.0,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.1,
-            transparent: true,
-            opacity: 0.8
-        });
-
-        // Inject Vertex Shader logic for waves
-        waterMat.onBeforeCompile = (shader) => {
-            shader.uniforms.time = { value: 0 };
-            
-            shader.vertexShader = `
-                uniform float time;
-                ${shader.vertexShader}
-            `;
-            
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <begin_vertex>',
-                `
-                #include <begin_vertex>
+            void main() {
+                vUv = uv;
+                vec3 newPos = position;
                 
                 // Cartoonish distinct waves
                 float elevation = sin(position.x * 0.15 + time * 0.8) * 0.4;
@@ -489,18 +407,58 @@
                 // High frequency ripples
                 elevation += sin(position.x * 0.6 + time * 2.5) * 0.1;
 
-                transformed.z += elevation;
-                `
-            );
-            
-            // Store reference to update uniform
-            waterMat.userData.shader = shader;
-        };
+                newPos.z += elevation;
+                vElevation = elevation;
 
-        const water = new THREE.Mesh(waterGeo, waterMat);
+                vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0);
+                gl_Position = projectionMatrix * mvPosition;
+
+                #include <fog_vertex>
+            }
+        `;
+
+        const waterFragmentShader = `
+            uniform vec3 colorDeep;
+            uniform vec3 colorSurface;
+            varying float vElevation;
+            #include <fog_pars_fragment>
+
+            void main() {
+                // Harder mix step for a slightly more stylized look
+                float mixStrength = (vElevation + 0.8) * 0.6;
+                vec3 color = mix(colorDeep, colorSurface, mixStrength);
+                
+                // Add a simple specular highlight fake
+                float highlight = step(0.9, mixStrength);
+                color = mix(color, vec3(1.0), highlight * 0.3);
+
+                gl_FragColor = vec4(color, 0.92);
+
+                #include <fog_fragment>
+            }
+        `;
+
+        const waterGeometry = new THREE.PlaneGeometry(160, 4000, 60, 250); // Increased length for safety
+        const waterUniforms = THREE.UniformsUtils.merge([
+            THREE.UniformsLib['fog'],
+            {
+                time: { value: 0 },
+                colorDeep: { value: new THREE.Color(CONFIG.waterColor) },
+                colorSurface: { value: new THREE.Color(CONFIG.waterHighlight) }
+            }
+        ]);
+
+        const waterMaterial = new THREE.ShaderMaterial({
+            vertexShader: waterVertexShader,
+            fragmentShader: waterFragmentShader,
+            uniforms: waterUniforms,
+            transparent: true,
+            side: THREE.DoubleSide,
+            fog: true // Enable fog
+        });
+        const water = new THREE.Mesh(waterGeometry, waterMaterial);
         water.rotation.x = -Math.PI / 2;
         water.position.set(0, -0.5, CONFIG.raceDistance / 2);
-        water.receiveShadow = true; // Water receives shadows now!
         scene.add(water);
 
         /**
@@ -509,12 +467,11 @@
         const landscapeGroup = new THREE.Group();
         scene.add(landscapeGroup);
 
-        // Textured Green Material
+        // Vibrant Green Material
         const grassMat = new THREE.MeshStandardMaterial({ 
-            map: grassTexture,
-            color: 0xaaaaaa, // Tint the texture slightly
+            color: 0x76FF03, // Lime Green
             roughness: 1, 
-            flatShading: false
+            flatShading: true // Low poly look
         });
 
         const leftBankGeo = new THREE.PlaneGeometry(500, 4000, 10, 50); // Increased length
@@ -551,28 +508,24 @@
             const trunk = new THREE.Mesh(trunkGeo, trunkMat);
             trunk.position.y = 3;
             trunk.castShadow = true;
-            trunk.receiveShadow = true; // Self shadow
             tree.add(trunk);
             
             // 3-Blob Foliage
             const f1 = new THREE.Mesh(foliageGeo, foliageMat);
             f1.position.y = 9;
             f1.castShadow = true;
-            f1.receiveShadow = true;
             tree.add(f1);
 
             const f2 = new THREE.Mesh(foliageGeo, foliageMat);
             f2.position.set(3, 7, 0);
             f2.scale.set(0.7, 0.7, 0.7);
             f2.castShadow = true;
-            f2.receiveShadow = true;
             tree.add(f2);
             
             const f3 = new THREE.Mesh(foliageGeo, foliageMat);
             f3.position.set(-3, 8, 2);
             f3.scale.set(0.8, 0.8, 0.8);
             f3.castShadow = true;
-            f3.receiveShadow = true;
             tree.add(f3);
 
             tree.position.set(x, 0, z);
@@ -608,7 +561,6 @@
             const body = new THREE.Mesh(houseBodyGeo, bodyMat);
             body.position.y = 5;
             body.castShadow = true;
-            body.receiveShadow = true;
             group.add(body);
 
             // Randomize roof color (Dark/Vibrant)
@@ -619,7 +571,6 @@
             roof.position.y = 13.5;
             roof.rotation.y = Math.PI / 4; // Align pyramid edges to box
             roof.castShadow = true;
-            roof.receiveShadow = true;
             group.add(roof);
 
             // Door
@@ -681,7 +632,6 @@
             );
             pole.position.set(0, 10, 0);
             pole.castShadow = true;
-            pole.receiveShadow = true;
             group.add(pole);
             
             const board = new THREE.Mesh(
@@ -690,7 +640,6 @@
             );
             board.position.set(0, 20, 0.5);
             board.castShadow = true;
-            board.receiveShadow = true;
             group.add(board);
 
             // Canvas Texture
@@ -844,8 +793,6 @@
         // LOAD EXTERNAL MODEL
         // We try to load 'models/duck.glb' from the 'models' subfolder.
         // If it fails (404), we fallback to procedural generation.
-        // COMMENTED OUT FOR NOW - Uncomment if you have the file locally
-        /*
         try {
             loader.load(
                 'models/duck.glb', 
@@ -860,13 +807,17 @@
                         }
                     });
                     
-                    // Adjust scale: 800% bigger (was 2.5) -> 20.0
-                    loadedDuckModel.scale.set(20.0, 20.0, 20.0); 
+                    // Adjust scale: The standard Duck.glb is often ~100 units tall or 1 unit.
+                    // We need it to be small (~2-3 units) to fit our track.
+                    loadedDuckModel.scale.set(2.0, 2.0, 2.0); // Adjusted scale for standard glTF duck (usually very small or very large depending on export)
+                    // Note: The Khronos duck is usually 1 meter tall. Our scale is arbitrary. 
+                    // If it's too big/small, we adjust here. Let's try 2.0 based on common exports of that specific file.
+                    // If it's the one from the three.js examples, it might need 0.02 or 200. 
+                    // Let's stick to a safe 2.5 and rely on the user to adjust if their specific export scale varies.
+                    loadedDuckModel.scale.set(20, 20, 20); 
 
                     loadedDuckModel.position.y = 0.5;
-                    // Rotate 90 degrees counter-clockwise from previous -Math.PI/2 (-90deg)
-                    // New rotation is 0 (facing native +Z axis if aligned, or +X if native)
-                    loadedDuckModel.rotation.y = 0; 
+                    loadedDuckModel.rotation.y = 0; // Face forward (+Z)
 
                     console.log("Model loaded successfully from models/duck.glb!");
                     activateStartButton();
@@ -882,10 +833,6 @@
             console.warn("Loader initialization failed:", e);
             activateStartButton();
         }
-        */
-       
-       // Force enable because we are using procedural by default now
-       setTimeout(activateStartButton, 500);
 
         function activateStartButton() {
             const btn = document.getElementById('start-btn');
@@ -907,7 +854,6 @@
                 this.name = NAMES[index % NAMES.length];
                 this.color = COLORS[index % COLORS.length];
                 this.mesh = new THREE.Group();
-                this.reflection = null; // Store reflection mesh
                 this.startX = startX;
                 
                 this.position = new THREE.Vector3(startX, 0, 0);
@@ -959,58 +905,6 @@
                 } else {
                     this.buildGLTFModel();
                 }
-                
-                // --- CREATE REFLECTION ---
-                // We clone the visual part of the duck (the children added by build functions)
-                // Note: We need to do this carefully. 
-                // A simple way is to create a clone of the Group content after build.
-                
-                // Create a container for the visual reflection
-                this.reflection = new THREE.Group();
-                
-                // We need to wait for the model to be added to this.mesh, 
-                // then clone the meshes inside this.mesh to the reflection.
-                // Since buildProcedural/GLTF runs synchronously (mostly), we can do it here.
-                
-                // Clone children (excluding the label sprite which is usually added last or first)
-                this.mesh.children.forEach(child => {
-                    // Don't reflect the name tag (Sprite)
-                    if (child.isSprite) return; 
-                    
-                    const clone = child.clone(true); // Deep clone
-                    
-                    // Modify materials for reflection style
-                    clone.traverse(node => {
-                        if (node.isMesh) {
-                            // Create a reflection material
-                            // Darker, transparent, no roughness
-                            const oldMat = node.material;
-                            // Check if it's an array of materials or single
-                            const baseColor = oldMat.color ? oldMat.color : new THREE.Color(0xffffff);
-                            
-                            node.material = new THREE.MeshBasicMaterial({
-                                color: baseColor,
-                                transparent: true,
-                                opacity: 0.3, // Semi-transparent
-                                side: THREE.FrontSide // Optimization
-                            });
-                            // Tint it slightly blue/watery
-                            node.material.color.lerp(new THREE.Color(CONFIG.waterColor), 0.3);
-                            
-                            node.castShadow = false;
-                            node.receiveShadow = false;
-                        }
-                    });
-                    
-                    this.reflection.add(clone);
-                });
-
-                // Flip reflection
-                this.reflection.scale.y = -1;
-                this.reflection.position.y = -0.1; // Slightly below water surface
-                
-                // Add to main mesh so it moves with the duck
-                this.mesh.add(this.reflection);
             }
 
             buildGLTFModel() {
@@ -1141,11 +1035,6 @@
                 this.mesh.position.y = Math.sin(time * 5 + this.wobblePhase) * 0.2; 
                 this.mesh.rotation.z = Math.sin(time * 8 + this.wobblePhase) * 0.15; 
                 this.mesh.rotation.y = Math.sin(time * 2 + this.wobblePhase) * 0.1; 
-                
-                // Distort reflection slightly based on movement (simple skew)
-                if(this.reflection) {
-                    this.reflection.rotation.z = this.mesh.rotation.z * 0.5;
-                }
             }
         }
 
@@ -1265,11 +1154,6 @@
         let camTimer = 0;
 
         function updateCamera(time, leadDuck, packCenterZ) {
-            // Update Light to follow camera/leader for infinite shadow map effect
-            // Target the point ahead of the leader
-            dirLight.position.set(50, 80, leadDuck.position.z + 20); 
-            dirLight.target.position.set(0, 0, leadDuck.position.z + 20);
-            
             if (time > camTimer + 10) {
                 camTimer = time;
                 camAngle = (camAngle + 1) % 3;
@@ -1343,11 +1227,7 @@
             const delta = clock.getDelta();
             const time = clock.getElapsedTime();
 
-            // Update water shader time uniform if present
-            if(water.material.userData.shader) {
-                water.material.userData.shader.uniforms.time.value = time;
-            }
-
+            water.material.uniforms.time.value = time;
             let leadDuck = ducks[0];
             let totalZ = 0;
 
@@ -1400,3 +1280,5 @@
     </script>
 </body>
 </html>
+
+
