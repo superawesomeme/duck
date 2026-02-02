@@ -1,0 +1,968 @@
+/**
+ * CONFIGURATION
+ */
+const CONFIG = {
+    duckCount: 8,
+    raceDistance: 800,
+    targetDuration: 58,
+    laneWidth: 6,
+    waterColor: 0x00B0FF,     // Vivid Cyan
+    waterHighlight: 0x80D8FF, // Light Cyan
+};
+
+const NAMES = [
+    "Sir Quacks", "Puddy", "Bill", "Moby", 
+    "Pondy", "Sparrow", "Feather", "Norris",
+    "Waddles", "Ducky", "Cmdr. Q", "Clean"
+];
+
+// Specific colors: Red, Yellow, Orange, Green, Purple, Dark Grey, White, Indigo
+const COLORS = [
+    0xF44336, // Red
+    0xFFEB3B, // Yellow
+    0xE65100, // Darker Orange
+    0x4CAF50, // Green
+    0x9C27B0, // Purple
+    0x455A64, // Dark Grey
+    0xF5F5F5, // White
+    0x3F51B5  // Indigo
+];
+
+/**
+ * UTILS
+ */
+const randomRange = (min, max) => Math.random() * (max - min) + min;
+
+/**
+ * THREE.JS SCENE SETUP
+ */
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+// Warm bright sky
+scene.background = new THREE.Color(0x4FC3F7); 
+scene.fog = new THREE.Fog(0x4FC3F7, 40, 300);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
+container.appendChild(renderer.domElement);
+
+/**
+ * LIGHTING (CARTOON STYLE)
+ */
+// Hemisphere light creates a nice sky/ground gradient fill
+const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x080820, 1.1 );
+scene.add( hemiLight );
+
+// Main directional light (Sun)
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+dirLight.position.set(50, 150, 50);
+dirLight.castShadow = true;
+
+// High res shadow map for crispness
+dirLight.shadow.mapSize.width = 4096;
+dirLight.shadow.mapSize.height = 4096;
+
+// Wide shadow camera
+dirLight.shadow.camera.near = 0.1;
+dirLight.shadow.camera.far = 600;
+dirLight.shadow.camera.left = -200;
+dirLight.shadow.camera.right = 200;
+dirLight.shadow.camera.top = 200;
+dirLight.shadow.camera.bottom = -200;
+
+// Slightly soften the shadow edges
+dirLight.shadow.bias = -0.0005;
+scene.add(dirLight);
+
+/**
+ * WATER SHADER (Updated with Fog)
+ */
+const waterVertexShader = `
+    uniform float time;
+    varying vec2 vUv;
+    varying float vElevation;
+    #include <fog_pars_vertex>
+
+    void main() {
+        vUv = uv;
+        vec3 newPos = position;
+        
+        // Cartoonish distinct waves
+        float elevation = sin(position.x * 0.15 + time * 0.8) * 0.4;
+        elevation += sin(position.y * 0.1 + time * 0.6) * 0.4;
+        
+        // High frequency ripples
+        elevation += sin(position.x * 0.6 + time * 2.5) * 0.1;
+
+        newPos.z += elevation;
+        vElevation = elevation;
+
+        vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+
+        #include <fog_vertex>
+    }
+`;
+
+const waterFragmentShader = `
+    uniform vec3 colorDeep;
+    uniform vec3 colorSurface;
+    varying float vElevation;
+    #include <fog_pars_fragment>
+
+    void main() {
+        // Harder mix step for a slightly more stylized look
+        float mixStrength = (vElevation + 0.8) * 0.6;
+        vec3 color = mix(colorDeep, colorSurface, mixStrength);
+        
+        // Add a simple specular highlight fake
+        float highlight = step(0.9, mixStrength);
+        color = mix(color, vec3(1.0), highlight * 0.3);
+
+        gl_FragColor = vec4(color, 0.92);
+
+        #include <fog_fragment>
+    }
+`;
+
+const waterGeometry = new THREE.PlaneGeometry(160, 4000, 60, 250); // Increased length for safety
+const waterUniforms = THREE.UniformsUtils.merge([
+    THREE.UniformsLib['fog'],
+    {
+        time: { value: 0 },
+        colorDeep: { value: new THREE.Color(CONFIG.waterColor) },
+        colorSurface: { value: new THREE.Color(CONFIG.waterHighlight) }
+    }
+]);
+
+const waterMaterial = new THREE.ShaderMaterial({
+    vertexShader: waterVertexShader,
+    fragmentShader: waterFragmentShader,
+    uniforms: waterUniforms,
+    transparent: true,
+    side: THREE.DoubleSide,
+    fog: true // Enable fog
+});
+const water = new THREE.Mesh(waterGeometry, waterMaterial);
+water.rotation.x = -Math.PI / 2;
+water.position.set(0, -0.5, CONFIG.raceDistance / 2);
+scene.add(water);
+
+/**
+ * LANDSCAPE (CARTOON STYLE)
+ */
+const landscapeGroup = new THREE.Group();
+scene.add(landscapeGroup);
+
+// Vibrant Green Material
+const grassMat = new THREE.MeshStandardMaterial({ 
+    color: 0x76FF03, // Lime Green
+    roughness: 1, 
+    flatShading: true // Low poly look
+});
+
+const leftBankGeo = new THREE.PlaneGeometry(500, 4000, 10, 50); // Increased length
+// Add some noise to vertices for uneven terrain
+const posAttribute = leftBankGeo.attributes.position;
+for (let i = 0; i < posAttribute.count; i++) {
+    posAttribute.setZ(i, posAttribute.getZ(i) + Math.random() * 2);
+}
+leftBankGeo.computeVertexNormals();
+
+const leftBank = new THREE.Mesh(leftBankGeo, grassMat);
+leftBank.rotation.x = -Math.PI / 2;
+leftBank.position.set(-330, -1.5, CONFIG.raceDistance / 2);
+leftBank.receiveShadow = true;
+landscapeGroup.add(leftBank);
+
+const rightBankGeo = leftBankGeo.clone(); // Clone geometry for right side
+const rightBank = new THREE.Mesh(rightBankGeo, grassMat);
+rightBank.rotation.x = -Math.PI / 2;
+rightBank.position.set(330, -1.5, CONFIG.raceDistance / 2);
+rightBank.receiveShadow = true;
+landscapeGroup.add(rightBank);
+
+// -- CARTOON TREES (Cloud Shape) --
+const trunkGeo = new THREE.CylinderGeometry(1.5, 2, 6, 8);
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8D6E63, flatShading: true }); // Brown
+const foliageGeo = new THREE.IcosahedronGeometry(7, 0); // Low poly sphere
+const foliageMat = new THREE.MeshStandardMaterial({ color: 0x00E676, flatShading: true }); // Bright Green
+
+// Pre-create geometry groups
+function createCartoonTree(x, z) {
+    const tree = new THREE.Group();
+    
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    trunk.position.y = 3;
+    trunk.castShadow = true;
+    tree.add(trunk);
+    
+    // 3-Blob Foliage
+    const f1 = new THREE.Mesh(foliageGeo, foliageMat);
+    f1.position.y = 9;
+    f1.castShadow = true;
+    tree.add(f1);
+
+    const f2 = new THREE.Mesh(foliageGeo, foliageMat);
+    f2.position.set(3, 7, 0);
+    f2.scale.set(0.7, 0.7, 0.7);
+    f2.castShadow = true;
+    tree.add(f2);
+    
+    const f3 = new THREE.Mesh(foliageGeo, foliageMat);
+    f3.position.set(-3, 8, 2);
+    f3.scale.set(0.8, 0.8, 0.8);
+    f3.castShadow = true;
+    tree.add(f3);
+
+    tree.position.set(x, 0, z);
+    const s = randomRange(0.8, 1.2);
+    tree.scale.set(s,s,s);
+    tree.rotation.y = Math.random() * Math.PI;
+    
+    return tree;
+}
+
+// -- CARTOON HOUSE --
+const houseBodyGeo = new THREE.BoxGeometry(12, 10, 12);
+const houseRoofGeo = new THREE.ConeGeometry(9, 7, 4); // Pyramid roof
+
+function createCartoonHouse(x, z, rotationY) {
+    const group = new THREE.Group();
+
+    // Randomize wall color: Shades of Grey, Brown, Cream
+    const wallColors = [
+        0xF5F5DC, // Beige
+        0xFFF8E1, // Cream
+        0xFFECB3, // Light Cream
+        0xD7CCC8, // Pale Brown
+        0xA1887F, // Light Brown
+        0x8D6E63, // Brown
+        0xF5F5F5, // Off-white
+        0xE0E0E0, // Light Grey
+        0x9E9E9E, // Grey
+        0x607D8B  // Blue Grey
+    ];
+    const wallColor = wallColors[Math.floor(Math.random() * wallColors.length)];
+    const bodyMat = new THREE.MeshStandardMaterial({ color: wallColor, flatShading: true });
+    const body = new THREE.Mesh(houseBodyGeo, bodyMat);
+    body.position.y = 5;
+    body.castShadow = true;
+    group.add(body);
+
+    // Randomize roof color (Dark/Vibrant)
+    const roofColors = [0x3e2723, 0x5d4037, 0x424242, 0x263238, 0xbf360c];
+    const roofColor = roofColors[Math.floor(Math.random() * roofColors.length)];
+    const roofMat = new THREE.MeshStandardMaterial({ color: roofColor, flatShading: true });
+    const roof = new THREE.Mesh(houseRoofGeo, roofMat);
+    roof.position.y = 13.5;
+    roof.rotation.y = Math.PI / 4; // Align pyramid edges to box
+    roof.castShadow = true;
+    group.add(roof);
+
+    // Door
+    const doorGeo = new THREE.PlaneGeometry(3, 6);
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x3e2723 });
+    const door = new THREE.Mesh(doorGeo, doorMat);
+    door.position.set(0, 3, 6.1);
+    group.add(door);
+
+    // Window
+    const winGeo = new THREE.PlaneGeometry(3, 3);
+    const winMat = new THREE.MeshStandardMaterial({ color: 0x81d4fa });
+    const win = new THREE.Mesh(winGeo, winMat);
+    win.position.set(0, 7, 6.1);
+    group.add(win);
+
+    group.position.set(x, 0, z);
+    group.rotation.y = rotationY;
+    
+    // Random scaling
+    const s = randomRange(0.9, 1.3);
+    group.scale.set(s, s, s);
+
+    return group;
+}
+
+// -- CLOUDS --
+const cloudGeo = new THREE.SphereGeometry(1, 7, 7);
+const cloudMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.9 });
+
+function createCloud(x, y, z) {
+    const cloud = new THREE.Group();
+    
+    const p1 = new THREE.Mesh(cloudGeo, cloudMat);
+    p1.scale.set(10, 8, 10);
+    cloud.add(p1);
+    
+    const p2 = new THREE.Mesh(cloudGeo, cloudMat);
+    p2.position.set(12, 0, 0);
+    p2.scale.set(8, 7, 8);
+    cloud.add(p2);
+    
+    const p3 = new THREE.Mesh(cloudGeo, cloudMat);
+    p3.position.set(-11, -1, 2);
+    p3.scale.set(9, 6, 9);
+    cloud.add(p3);
+
+    cloud.position.set(x, y, z);
+    return cloud;
+}
+
+// -- BILLBOARDS (Pop style) --
+function createBillboard(text, x, z, rotationY) {
+    const group = new THREE.Group();
+    
+    const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.8, 0.8, 20),
+        new THREE.MeshStandardMaterial({color: 0x555555})
+    );
+    pole.position.set(0, 10, 0);
+    pole.castShadow = true;
+    group.add(pole);
+    
+    const board = new THREE.Mesh(
+        new THREE.BoxGeometry(32, 16, 1),
+        new THREE.MeshStandardMaterial({color: 0xffffff})
+    );
+    board.position.set(0, 20, 0.5);
+    board.castShadow = true;
+    group.add(board);
+
+    // Canvas Texture
+    const cvs = document.createElement('canvas');
+    cvs.width = 512; cvs.height = 256;
+    const ctx = cvs.getContext('2d');
+    
+    // Pop Background
+    const h = Math.random() * 360;
+    ctx.fillStyle = `hsl(${h}, 80%, 60%)`;
+    ctx.fillRect(0,0,512,256);
+    
+    // Polka dots
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    for(let i=0; i<10; i++) {
+        for(let j=0; j<5; j++) {
+            ctx.beginPath();
+            ctx.arc(i*60, j*60, 20, 0, Math.PI*2);
+            ctx.fill();
+        }
+    }
+    
+    // Border
+    ctx.lineWidth = 20;
+    ctx.strokeStyle = "#fff";
+    ctx.strokeRect(10,10,492,236);
+
+    // Text
+    ctx.fillStyle = "white";
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 8;
+    ctx.font = "900 80px 'Fredoka One'";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeText(text, 256, 128);
+    ctx.fillText(text, 256, 128);
+
+    const tex = new THREE.CanvasTexture(cvs);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(30, 14), new THREE.MeshBasicMaterial({map: tex}));
+    face.position.set(0, 20, 1.1);
+    group.add(face);
+    
+    group.position.set(x, 0, z);
+    group.rotation.y = rotationY;
+    
+    return group;
+}
+
+// Populate World
+const ads = ["Golden Oldies", "Picket Pickers", "One Stop", "Picket Peddlers"];
+for(let z = -100; z < CONFIG.raceDistance + 200; z += 50) {
+    // Trees
+    if(Math.random() > 0.4) landscapeGroup.add(createCartoonTree(-100 - Math.random()*80, z));
+    if(Math.random() > 0.4) landscapeGroup.add(createCartoonTree(100 + Math.random()*80, z));
+    
+    // Houses (New addition)
+    if(Math.random() > 0.5) { // Increased density
+        // Place further back from the river
+        const side = Math.random() > 0.5 ? 1 : -1;
+        const dist = 140 + Math.random() * 60;
+        // Rotate to mostly face the river/track
+        const rot = side === 1 ? -Math.PI/2 : Math.PI/2;
+        landscapeGroup.add(createCartoonHouse(side * dist, z, rot + (Math.random()-0.5)*0.5));
+    }
+
+    // Clouds (High up)
+    if(Math.random() > 0.7) landscapeGroup.add(createCloud(randomRange(-200, 200), randomRange(60, 100), z));
+
+    // Billboards (More frequent: every 150 units)
+    if(z > 0 && z % 150 === 0) {
+        const txt = ads[Math.floor(Math.random()*ads.length)];
+        // Angle billboards to face the track and the oncoming racers (-Z direction)
+        if(Math.random() > 0.5) {
+            // Left Bank: Face +X (Right) and -Z (Back) -> Positive Rotation
+            landscapeGroup.add(createBillboard(txt, -120, z, Math.PI / 1.4));
+        } else {
+            // Right Bank: Face -X (Left) and -Z (Back) -> Negative Rotation
+            landscapeGroup.add(createBillboard(txt, 120, z, -Math.PI / 1.4));
+        }
+    }
+}
+
+/**
+ * FINISH LINE
+ */
+const finishGroup = new THREE.Group();
+const fPoleGeo = new THREE.BoxGeometry(2, 25, 2);
+const fPoleMat = new THREE.MeshStandardMaterial({color: 0x5D4037});
+const p1 = new THREE.Mesh(fPoleGeo, fPoleMat); p1.position.set(-35, 12.5, CONFIG.raceDistance);
+const p2 = new THREE.Mesh(fPoleGeo, fPoleMat); p2.position.set(35, 12.5, CONFIG.raceDistance);
+p1.castShadow = true; p2.castShadow = true;
+
+const bannerGeo = new THREE.BoxGeometry(72, 8, 2);
+
+// Create Checkerboard Texture via Canvas
+const checkCanvas = document.createElement('canvas');
+checkCanvas.width = 576; // 64 * 9 (Aspect ratio 9:1)
+checkCanvas.height = 64; 
+const checkCtx = checkCanvas.getContext('2d');
+
+checkCtx.fillStyle = '#111';
+checkCtx.fillRect(0,0,576,64);
+
+checkCtx.fillStyle = '#fff';
+const sqW = 576 / 18; // 32px
+const sqH = 64 / 2;   // 32px
+
+for(let y=0; y<2; y++) {
+    for(let x=0; x<18; x++) {
+        if((x+y)%2 === 0) checkCtx.fillRect(x*sqW, y*sqH, sqW, sqH);
+    }
+}
+
+const checkTex = new THREE.CanvasTexture(checkCanvas);
+checkTex.magFilter = THREE.NearestFilter; // Sharp pixels for checkerboard
+checkTex.minFilter = THREE.NearestFilter;
+
+const bannerMat = new THREE.MeshStandardMaterial({
+    map: checkTex,
+    roughness: 0.3
+});
+
+const fBanner = new THREE.Mesh(bannerGeo, bannerMat);
+fBanner.position.set(0, 22, CONFIG.raceDistance);
+fBanner.castShadow = true;
+
+finishGroup.add(p1, p2, fBanner);
+scene.add(finishGroup);
+
+// Buoys
+const buoyGeo = new THREE.SphereGeometry(1.5, 16, 16);
+const buoyMat = new THREE.MeshStandardMaterial({color: 0xFF3D00, roughness: 0.1});
+for(let i=0; i<CONFIG.raceDistance; i+=50) {
+    const b1 = new THREE.Mesh(buoyGeo, buoyMat); b1.position.set(-35, 0, i);
+    const b2 = new THREE.Mesh(buoyGeo, buoyMat); b2.position.set(35, 0, i);
+    scene.add(b1); scene.add(b2);
+}
+
+/**
+ * GLOBAL ASSETS
+ */
+let loadedDuckModel = null;
+const loader = new THREE.GLTFLoader();
+
+// Setup DRACOLoader for compressed meshes
+const dracoLoader = new THREE.DRACOLoader();
+// Use a CDN for the decoder libraries
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+loader.setDRACOLoader(dracoLoader);
+
+// LOAD EXTERNAL MODEL
+// We try to load 'models/duck.glb' from the 'models' subfolder.
+// If it fails (404), we fallback to procedural generation.
+try {
+    loader.load(
+        'models/duck.glb', 
+        function (gltf) {
+            loadedDuckModel = gltf.scene;
+            
+            // Pre-process: Enable shadows
+            loadedDuckModel.traverse(node => {
+                if(node.isMesh) {
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                }
+            });
+            
+            // Adjust scale: The standard Duck.glb is often ~100 units tall or 1 unit.
+            // We need it to be small (~2-3 units) to fit our track.
+            loadedDuckModel.scale.set(2.0, 2.0, 2.0); // Adjusted scale for standard glTF duck (usually very small or very large depending on export)
+            // Note: The Khronos duck is usually 1 meter tall. Our scale is arbitrary. 
+            // If it's too big/small, we adjust here. Let's try 2.0 based on common exports of that specific file.
+            // If it's the one from the three.js examples, it might need 0.02 or 200. 
+            // Let's stick to a safe 2.5 and rely on the user to adjust if their specific export scale varies.
+            loadedDuckModel.scale.set(20, 20, 20); 
+
+            loadedDuckModel.position.y = 0.5;
+            loadedDuckModel.rotation.y = 0; // Face forward (+Z)
+
+            console.log("Model loaded successfully from models/duck.glb!");
+            activateStartButton();
+        },
+        undefined, 
+        function (error) {
+            console.warn("Could not load 'models/duck.glb'. Falling back to built-in procedural duck.", error);
+            // Fallback to procedural
+            activateStartButton();
+        }
+    );
+} catch (e) {
+    console.warn("Loader initialization failed:", e);
+    activateStartButton();
+}
+
+function activateStartButton() {
+    const btn = document.getElementById('start-btn');
+    if (btn) {
+        btn.disabled = false;
+        btn.innerText = "START RACE";
+        btn.style.background = "linear-gradient(to bottom, #FFEB3B 0%, #FFC107 100%)";
+        btn.style.cursor = "pointer";
+    }
+    initDucks(); // Initialize ducks (using model or procedural fallback)
+}
+
+/**
+ * DUCK CLASS
+ */
+class Duck {
+    constructor(id, index, startX) {
+        this.id = id;
+        this.name = NAMES[index % NAMES.length];
+        this.color = COLORS[index % COLORS.length];
+        this.mesh = new THREE.Group();
+        this.startX = startX;
+        
+        this.position = new THREE.Vector3(startX, 0, 0);
+        this.baseSpeed = (CONFIG.raceDistance / CONFIG.targetDuration);
+        this.wobblePhase = Math.random() * Math.PI * 2;
+        this.finished = false;
+        this.finishTime = 0;
+        
+        this.stamina = 1.0;
+        this.aggressiveness = Math.random(); 
+        this.energyCycle = Math.random() * 10;
+
+        this.buildModel();
+        this.addNameLabel();
+        scene.add(this.mesh);
+    }
+
+    addNameLabel() {
+        const cvs = document.createElement('canvas');
+        cvs.width = 512; cvs.height = 128;
+        const ctx = cvs.getContext('2d');
+        ctx.clearRect(0, 0, 512, 128);
+        ctx.font = "60px 'Fredoka One'";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineWidth = 12;
+        ctx.strokeStyle = "rgba(0,0,0,0.5)";
+        ctx.strokeText(this.name, 256, 64);
+        ctx.fillStyle = "white";
+        ctx.fillText(this.name, 256, 64);
+        const tex = new THREE.CanvasTexture(cvs);
+        const mat = new THREE.SpriteMaterial({
+            map: tex, 
+            transparent: true,
+            depthWrite: false, 
+            depthTest: true
+        });
+        const sprite = new THREE.Sprite(mat);
+        sprite.position.set(0, 5.5, 0); 
+        sprite.scale.set(10, 2.5, 1);
+        sprite.renderOrder = 100;
+        this.mesh.add(sprite);
+    }
+
+    buildModel() {
+        // FALLBACK: Use Procedural Duck if model didn't load
+        if (!loadedDuckModel) {
+            this.buildProceduralModel();
+        } else {
+            this.buildGLTFModel();
+        }
+    }
+
+    buildGLTFModel() {
+        // Clone the loaded GLTF scene
+        const model = loadedDuckModel.clone();
+        
+        // Colorize the duck
+        model.traverse((node) => {
+            if (node.isMesh) {
+                // Clone material to ensure unique color per duck
+                node.material = node.material.clone();
+                node.material.color.setHex(this.color);
+                // Make it shiny plastic
+                node.material.roughness = 0.1;
+                node.material.metalness = 0.0;
+                
+                // If we remove the map, we get a solid colored duck shape (Good for "Toy" look)
+                node.material.map = null; 
+            }
+        });
+        
+        this.mesh.add(model);
+    }
+
+    buildProceduralModel() {
+        // --- PROCEDURAL FALLBACK (Recreated High-Quality Shape) ---
+        const bodyMat = new THREE.MeshStandardMaterial({ color: this.color, roughness: 0.2, metalness: 0.05 });
+        const beakMat = new THREE.MeshStandardMaterial({ color: 0xFFAA00, roughness: 0.2 });
+        const whiteMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.1 });
+        const blackMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const duckScale = 1.2; 
+
+        // Hull
+        const hull = new THREE.Mesh(new THREE.SphereGeometry(1.1, 32, 32), bodyMat);
+        hull.scale.set(1.0, 0.65, 1.4); 
+        hull.position.set(0, 0.7 * duckScale, 0);
+        hull.castShadow = true;
+        this.mesh.add(hull);
+
+        // Neck
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 0.8, 32), bodyMat);
+        neck.position.set(0, 1.3 * duckScale, 0.6 * duckScale);
+        neck.rotation.x = -0.2;
+        neck.castShadow = true;
+        this.mesh.add(neck);
+
+        // Head
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.75, 32, 32), bodyMat);
+        head.position.set(0, 1.8 * duckScale, 0.7 * duckScale);
+        head.castShadow = true;
+        this.mesh.add(head);
+
+        // Beak
+        const beakUpper = new THREE.Mesh(new THREE.SphereGeometry(0.15, 32, 16), beakMat);
+        beakUpper.scale.set(3.0, 0.8, 3.5);
+        beakUpper.position.set(0, -0.15, 0.7);
+        beakUpper.rotation.x = 0.1;
+        head.add(beakUpper);
+        const beakLower = new THREE.Mesh(new THREE.SphereGeometry(0.12, 32, 16), beakMat);
+        beakLower.scale.set(2.5, 0.6, 2.5);
+        beakLower.position.set(0, -0.3, 0.65);
+        head.add(beakLower);
+
+        // Tail
+        const tail = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.8, 32), bodyMat);
+        tail.position.set(0, 0.9 * duckScale, -1.2 * duckScale);
+        tail.rotation.x = 0.8;
+        tail.castShadow = true;
+        this.mesh.add(tail);
+
+        // Wings
+        const wingL = new THREE.Mesh(new THREE.SphereGeometry(0.7, 32, 32), bodyMat);
+        wingL.scale.set(0.3, 0.5, 1.0);
+        wingL.position.set(0.9 * duckScale, 0.8 * duckScale, 0);
+        wingL.rotation.y = 0.2; wingL.rotation.z = -0.2;
+        wingL.castShadow = true;
+        this.mesh.add(wingL);
+        const wingR = wingL.clone();
+        wingR.position.set(-0.9 * duckScale, 0.8 * duckScale, 0);
+        wingR.rotation.y = -0.2; wingR.rotation.z = 0.2;
+        this.mesh.add(wingR);
+
+        // Eyes
+        const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.12, 32, 32), whiteMat);
+        eyeL.position.set(0.35, 0.1, 0.6); eyeL.scale.set(1, 1, 0.5); eyeL.lookAt(1, 0.1, 2);
+        head.add(eyeL);
+        eyeL.add(new THREE.Mesh(new THREE.SphereGeometry(0.06, 32, 32), blackMat).translateZ(0.12));
+        const eyeR = eyeL.clone();
+        eyeR.position.set(-0.35, 0.1, 0.6); eyeR.lookAt(-1, 0.1, 2);
+        head.add(eyeR);
+    }
+
+    update(delta, time) {
+        if (this.finished) {
+            this.mesh.position.y = Math.sin(time * 3 + this.wobblePhase) * 0.2;
+            return;
+        }
+
+        const energy = Math.sin(time * 0.5 + this.energyCycle); 
+        let targetSpeed = this.baseSpeed;
+        
+        if (energy > 0.5) {
+            targetSpeed *= 1.2 + (this.aggressiveness * 0.2); 
+        } else if (energy < -0.5) {
+            targetSpeed *= 0.85; 
+        }
+        
+        targetSpeed += (Math.random() - 0.5) * 2.0;
+
+        const distRemaining = CONFIG.raceDistance - this.position.z;
+        if (distRemaining < 100 && distRemaining > 0) {
+            targetSpeed *= 1.1;
+        }
+
+        this.position.z += targetSpeed * delta;
+
+        if (this.position.x > 25) {
+            this.position.x -= 5 * delta;
+        } else if (this.position.x < -25) {
+            this.position.x += 5 * delta;
+        } else {
+            this.position.x += Math.sin(time + this.id * 10) * 2 * delta;
+        }
+
+        this.mesh.position.copy(this.position);
+        
+        // Physics bobbing
+        this.mesh.position.y = Math.sin(time * 5 + this.wobblePhase) * 0.2; 
+        this.mesh.rotation.z = Math.sin(time * 8 + this.wobblePhase) * 0.15; 
+        this.mesh.rotation.y = Math.sin(time * 2 + this.wobblePhase) * 0.1; 
+    }
+}
+
+/**
+ * GAME STATE
+ */
+let ducks = [];
+let isRacing = false;
+let raceStartTime = 0;
+let raceEnded = false;
+
+function initDucks() {
+    ducks.forEach(d => scene.remove(d.mesh));
+    ducks = [];
+    const startZ = 0;
+    const spacing = 5;
+    const totalWidth = CONFIG.duckCount * spacing;
+    const leftBound = -totalWidth / 2;
+
+    for (let i = 0; i < CONFIG.duckCount; i++) {
+        const x = leftBound + (i * spacing) + (Math.random() * 2);
+        const duck = new Duck(i, i, x);
+        ducks.push(duck);
+    }
+}
+
+// Removed initial initDucks() call as it's handled by activateStartButton()
+
+/**
+ * UI ELEMENTS
+ */
+const startScreen = document.getElementById('start-screen');
+const startBtn = document.getElementById('start-btn');
+// Enable button immediately
+startBtn.disabled = false;
+startBtn.innerText = "START RACE";
+
+const endScreen = document.getElementById('end-screen');
+const restartBtn = document.getElementById('restart-btn');
+const lbContent = document.getElementById('lb-content');
+const winnerText = document.getElementById('winner-text');
+const progressFill = document.getElementById('progress-fill');
+
+startBtn.addEventListener('click', () => {
+    startScreen.classList.add('hidden');
+    startRace();
+});
+
+restartBtn.addEventListener('click', () => {
+    endScreen.classList.add('hidden');
+    resetRace();
+});
+
+function startRace() {
+    isRacing = true;
+    raceStartTime = performance.now();
+    raceEnded = false;
+}
+
+function resetRace() {
+    initDucks();
+    isRacing = false;
+    raceEnded = false;
+    progressFill.style.width = "0%";
+    startScreen.classList.remove('hidden');
+    camera.position.set(0, 15, -30);
+    camera.lookAt(0, 0, 50);
+    document.querySelectorAll('.confetti').forEach(e => e.remove());
+}
+
+function spawnConfetti() {
+    for(let i=0; i<150; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti';
+        c.style.left = Math.random() * 100 + 'vw';
+        c.style.top = -20 + 'px';
+        c.style.backgroundColor = '#' + Math.floor(Math.random()*16777215).toString(16);
+        c.style.animationDuration = (Math.random() * 2 + 3) + 's';
+        document.body.appendChild(c);
+    }
+}
+
+function resolveCollisions() {
+    const minDist = 3.2; 
+    const minDistSq = minDist * minDist;
+
+    for (let i = 0; i < ducks.length; i++) {
+        for (let j = i + 1; j < ducks.length; j++) {
+            const d1 = ducks[i];
+            const d2 = ducks[j];
+            if (d1.finished || d2.finished) continue;
+
+            const dx = d1.position.x - d2.position.x;
+            const dz = d1.position.z - d2.position.z;
+            const distSq = dx * dx + dz * dz;
+
+            if (distSq < minDistSq) {
+                const dist = Math.sqrt(distSq);
+                const overlap = minDist - dist;
+                const nx = dx / dist;
+                const nz = dz / dist;
+                const push = overlap * 0.5;
+                d1.position.x += nx * push;
+                d1.position.z += nz * push;
+                d2.position.x -= nx * push;
+                d2.position.z -= nz * push;
+            }
+        }
+    }
+}
+
+/**
+ * MAIN LOOP
+ */
+const clock = new THREE.Clock();
+let camAngle = 0; 
+let camTimer = 0;
+
+function updateCamera(time, leadDuck, packCenterZ) {
+    if (time > camTimer + 10) {
+        camTimer = time;
+        camAngle = (camAngle + 1) % 3;
+    }
+
+    let targetPos = new THREE.Vector3();
+    let lookAtPos = new THREE.Vector3();
+
+    if (raceEnded) {
+        const winner = ducks.find(d => d.finishTime > 0) || leadDuck;
+        const angle = time * 0.4;
+        targetPos.set(
+            winner.position.x + Math.sin(angle) * 12,
+            6,
+            winner.position.z + Math.cos(angle) * 12
+        );
+        lookAtPos.copy(winner.position);
+    } else if (!isRacing) {
+        targetPos.set(0, 20, -35);
+        lookAtPos.set(0, 0, 10);
+    } else {
+        if (camAngle === 0) { // Chase Cam
+            targetPos.set(leadDuck.position.x, 8, leadDuck.position.z - 15);
+            lookAtPos.set(leadDuck.position.x, 2, leadDuck.position.z + 20);
+        } 
+        else if (camAngle === 1) { // Broadcast Cam
+            targetPos.set(25, 20, packCenterZ - 15);
+            lookAtPos.set(0, 0, packCenterZ + 40);
+        } 
+        else { // Side Track
+            targetPos.set(-28, 8, leadDuck.position.z + 5);
+            lookAtPos.set(leadDuck.position.x, 2, leadDuck.position.z + 10);
+        }
+    }
+    camera.position.lerp(targetPos, 0.04);
+    camera.lookAt(lookAtPos);
+}
+
+function updateUI(leadDuck, sortedDucks) {
+    let html = '';
+    for(let i=0; i<sortedDucks.length; i++) {
+        const d = sortedDucks[i];
+        
+        // Determine text contrast based on duck color brightness
+        const r = (d.color >> 16) & 255;
+        const g = (d.color >> 8) & 255;
+        const b = d.color & 255;
+        // YIQ formula for brightness
+        const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        const textColor = (yiq >= 128) ? '#000000' : '#ffffff';
+        
+        const colorHex = '#' + d.color.toString(16).padStart(6, '0');
+
+        html += `
+        <div class="lb-row">
+            <div style="display:flex; align-items:center;">
+                <span class="lb-rank" style="background:${colorHex}; color:${textColor}; border: 1px solid rgba(0,0,0,0.1);">${i+1}</span>
+                <span class="lb-name" style="color:${d.finishTime > 0 ? '#00aa00' : '#444'}">${d.name}</span>
+            </div>
+            <span class="lb-dist">${d.finished ? '🏁' : Math.floor(d.position.z) + 'm'}</span>
+        </div>
+        `;
+    }
+    lbContent.innerHTML = html;
+    const prog = Math.min((leadDuck.position.z / CONFIG.raceDistance) * 100, 100);
+    progressFill.style.width = prog + '%';
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+    const time = clock.getElapsedTime();
+
+    water.material.uniforms.time.value = time;
+    let leadDuck = ducks[0];
+    let totalZ = 0;
+
+    if (isRacing) {
+        ducks.forEach(duck => {
+            duck.update(delta, time);
+            totalZ += duck.position.z;
+            if (!duck.finished && duck.position.z >= CONFIG.raceDistance) {
+                duck.finished = true;
+                duck.finishTime = time;
+            }
+        });
+        resolveCollisions();
+        ducks.sort((a, b) => {
+            if (a.finished && b.finished) return a.finishTime - b.finishTime;
+            if (a.finished) return -1;
+            if (b.finished) return 1;
+            return b.position.z - a.position.z;
+        });
+        leadDuck = ducks[0];
+        const finishedCount = ducks.filter(d => d.finished).length;
+        if (finishedCount > 0 && !raceEnded) {
+            raceEnded = true;
+            winnerText.innerText = `WINNER: ${leadDuck.name}!`;
+            winnerText.style.color = '#' + leadDuck.color.toString(16);
+            setTimeout(() => {
+                endScreen.classList.remove('hidden');
+                spawnConfetti();
+            }, 2000);
+        }
+    }
+
+    const packCenterZ = ducks.length > 0 ? totalZ / ducks.length : 0;
+    // Guard against empty duck array before loading
+    if(leadDuck) {
+        updateCamera(time, leadDuck, packCenterZ);
+        updateUI(leadDuck, ducks);
+    }
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();

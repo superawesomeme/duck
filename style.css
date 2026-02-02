@@ -1,0 +1,262 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;800&display=swap');
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: #4FC3F7; /* Bright Sky Blue */
+    font-family: 'Nunito', sans-serif;
+    user-select: none;
+}
+
+#canvas-container {
+    width: 100vw;
+    height: 100vh;
+    display: block;
+}
+
+/* UI Overlay */
+#ui-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+/* Header */
+#header {
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+}
+
+/* Leaderboard */
+#leaderboard {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    
+    /* Modern Frosted Glass Effect */
+    background: rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+    
+    padding: 15px;
+    border-radius: 20px;
+    width: 260px;
+    
+    /* Responsive Layout Constraints */
+    max-width: 40vw; 
+    max-height: 70vh;
+    overflow-y: auto; /* Scroll if list is too long for screen */
+    
+    font-family: 'Nunito', sans-serif;
+    
+    /* Custom Scrollbar for sleek look */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.6) transparent;
+}
+
+/* Webkit Scrollbar Styling */
+#leaderboard::-webkit-scrollbar {
+    width: 6px;
+}
+#leaderboard::-webkit-scrollbar-track {
+    background: transparent;
+}
+#leaderboard::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.6);
+    border-radius: 20px;
+}
+
+.lb-header {
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.2rem;
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    text-align: center;
+    letter-spacing: 1px;
+}
+
+.lb-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-weight: 800;
+    font-size: 0.95rem;
+    
+    /* Semi-transparent background for readability */
+    background: rgba(255, 255, 255, 0.5);
+    padding: 8px;
+    border-radius: 12px;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.lb-row:hover {
+    transform: scale(1.02);
+    background: rgba(255, 255, 255, 0.7);
+}
+
+.lb-rank {
+    width: 30px;
+    text-align: center;
+    color: #fff;
+    /* background set via JS now */
+    border-radius: 50%;
+    height: 25px;
+    line-height: 25px;
+    font-size: 0.8rem;
+    margin-right: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.lb-name {
+    flex-grow: 1;
+    margin-left: 5px;
+    color: #444;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: 'Fredoka One', cursive;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+}
+
+.lb-dist {
+    color: #888;
+    font-size: 0.8rem;
+    min-width: 40px;
+    text-align: right;
+    font-family: 'Nunito', sans-serif; /* Keep numbers simple */
+}
+
+/* Start Screen */
+#start-screen, #end-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 168, 255, 0.6);
+    backdrop-filter: blur(8px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    transition: opacity 0.5s;
+    z-index: 10;
+}
+
+.hidden {
+    opacity: 0;
+    pointer-events: none !important;
+}
+
+h1 {
+    font-family: 'Fredoka One', cursive;
+    font-size: 6rem;
+    color: #FFEB3B;
+    text-shadow: 
+        4px 4px 0px #FF9800, 
+        8px 8px 0px rgba(0,0,0,0.1);
+    margin: 0 0 30px 0;
+    text-align: center;
+    letter-spacing: 3px;
+    -webkit-text-stroke: 3px #F57C00;
+}
+
+button {
+    background: linear-gradient(to bottom, #FFEB3B 0%, #FFC107 100%);
+    border: 4px solid #fff;
+    padding: 25px 70px;
+    font-size: 2.2rem;
+    font-family: 'Fredoka One', cursive;
+    color: #E65100;
+    border-radius: 60px;
+    cursor: pointer;
+    box-shadow: 
+        0 10px 0 #FF8F00,
+        0 20px 20px rgba(0,0,0,0.2);
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+button:hover {
+    transform: translateY(-5px);
+    box-shadow: 
+        0 15px 0 #FF8F00,
+        0 25px 25px rgba(0,0,0,0.25);
+    background: linear-gradient(to bottom, #FFF176 0%, #FFD54F 100%);
+}
+
+button:active {
+    transform: translateY(5px);
+    box-shadow: 
+        0 5px 0 #FF8F00,
+        0 10px 10px rgba(0,0,0,0.2);
+}
+
+button:disabled {
+    background: #ccc;
+    color: #666;
+    box-shadow: none;
+    cursor: not-allowed;
+    transform: none;
+}
+
+#winner-text {
+    font-family: 'Fredoka One', cursive;
+    font-size: 4rem;
+    color: #fff;
+    margin-bottom: 40px;
+    text-align: center;
+    text-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    -webkit-text-stroke: 2px #333;
+}
+
+/* Progress Bar at bottom */
+#progress-container {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 70%;
+    height: 18px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 20px;
+    overflow: hidden;
+    border: 3px solid white;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+#progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #FFEB3B, #FF9800);
+    width: 0%;
+    transition: width 0.1s linear;
+    border-radius: 20px;
+}
+
+/* Confetti */
+.confetti {
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    background-color: #f00;
+    border-radius: 4px;
+    animation: fall linear forwards;
+}
+
+@keyframes fall {
+    to { transform: translateY(100vh) rotate(720deg); }
+}
