@@ -900,7 +900,7 @@ function updateUI(leadDuck, sortedDucks) {
         html += `
         <div class="lb-row">
             <div style="display:flex; align-items:center;">
-                <span class="lb-rank" style="background:${colorHex}; color:${textColor}; border: 1px solid rgba(0,0,0,0.1);">${i+1}</span>
+                <span class="lb-rank" style="background:${colorHex}; color:${textColor}; border: 1px solid rgba(0,0,0,0.1);">${d.id + 1}</span>
                 <span class="lb-name" style="color:${d.finishTime > 0 ? '#00aa00' : '#444'}">${d.name}</span>
             </div>
             <span class="lb-dist">${d.finished ? '🏁' : Math.floor(d.position.z) + 'm'}</span>
