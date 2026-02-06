@@ -35,17 +35,18 @@ body {
 }
 .red-dot { width: 10px; height: 10px; background-color: var(--broadcast-red); border-radius: 50%; animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0.4; } }
+
 .event-title {
     background: linear-gradient(90deg, var(--broadcast-blue) 0%, rgba(27,38,59,0) 100%);
     padding: 5px 40px 5px 20px; border-left: 4px solid var(--broadcast-accent);
-    display: flex; align-items: center; 
+    display: flex; align-items: center;
 }
 
 .channel-logo { 
     height: 32px; 
     width: auto; 
     margin-right: 15px; 
-    transform: skewX(15deg);
+    transform: skewX(15deg); /* Counter-skew the image */
 }
 
 .race-name { font-weight: 600; letter-spacing: 2px; text-transform: uppercase; }
@@ -55,7 +56,7 @@ body {
     position: absolute; top: 100px; left: 40px; width: 280px; display: flex; flex-direction: column; gap: 2px;
 }
 .lb-title {
-    background: var(--broadcast-accent); 
+    background: var(--broadcast-accent); /* Pink background */
     color: white; padding: 5px 15px; font-weight: 700; text-transform: uppercase;
     font-size: 0.9rem; align-self: flex-start; transform: skewX(-15deg); margin-bottom: 5px;
 }
@@ -117,10 +118,25 @@ h2 { font-size: 2rem; margin-bottom: 20px; text-align: center; }
 /* Controls */
 .control-group { margin-bottom: 10px; text-align: center; }
 .control-group label { display: block; color: #888; font-family: 'Roboto Condensed'; margin-bottom: 10px; font-size: 0.9rem; letter-spacing: 1px; }
+
 select, input[type="text"] {
     background: #05080e; border: 1px solid #444; color: white; padding: 10px 15px; font-family: 'Rajdhani';
     font-size: 1.2rem; width: 100%; box-sizing: border-box; outline: none; transition: border 0.2s;
 }
+
+/* Custom Select Arrow */
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20292.4%20292.4%22%3E%3Cpath%20fill%3D%22%23ffffff%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+    background-repeat: no-repeat;
+    background-position: right 20px center;
+    background-size: 12px;
+    padding-right: 40px; 
+    cursor: pointer;
+}
+
 select:focus, input:focus { border-color: var(--broadcast-accent); }
 
 /* Compact Preview List */
@@ -128,16 +144,14 @@ select:focus, input:focus { border-color: var(--broadcast-accent); }
     margin-bottom: 20px; width: 500px; margin-left: auto; margin-right: auto;
     padding: 0;
 }
-
 .preview-grid { 
     display: grid; 
     grid-template-columns: 1fr 1fr; 
-    /* UPDATED: Define 4 rows and fill columns first */
+    /* Force 4 rows filling columns first (1-4 Left, 5-8 Right) */
     grid-template-rows: repeat(4, auto);
-    grid-auto-flow: column; 
+    grid-auto-flow: column;
     gap: 8px 15px; 
 }
-
 .preview-item { display: flex; align-items: center; background: rgba(255,255,255,0.05); padding: 5px 10px; }
 .preview-num {
     width: 25px; height: 25px; line-height: 25px; text-align: center; font-weight: 700;
@@ -161,14 +175,12 @@ button:hover { background: white; transform: skewX(-10deg) translateY(-2px); box
 .input-grid { 
     display: grid; 
     grid-template-columns: 1fr 1fr; 
-    /* UPDATED: Force 4 rows and fill vertically first */
+    /* Force 4 rows filling columns first */
     grid-template-rows: repeat(4, auto);
-    grid-auto-flow: column; 
-    
+    grid-auto-flow: column;
     gap: 15px; 
     margin-bottom: 20px; 
 }
-
 .inp-group label { font-size: 0.8rem; color: #aaa; margin-bottom: 5px; display: block; }
 .full-width { margin-bottom: 20px; }
 .modal-buttons { display: flex; justify-content: flex-end; gap: 15px; }
