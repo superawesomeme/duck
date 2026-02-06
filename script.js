@@ -12,12 +12,12 @@ const CONFIG = {
 // Colors for the 8 lanes
 const COLORS = [
     0xF42941, // Red
-    0xE65100, // Orange (Darker)
+    0xE65100, // Orange
     0xF0F136, // Yellow
     0x50C878, // Green
     0x0033FF, // Blue
     0x6A2FA0, // Purple
-    0x37474F, // Grey (Darker)
+    0x37474F, // Grey
     0xF3F5F7  // White
 ];
 
@@ -412,35 +412,45 @@ class Duck {
     }
 
     update(delta, time) {
+        // --- 1. MOVEMENT LOGIC (Only if racing) ---
+        if (!this.finished) {
+            const energy = Math.sin(time * 0.5 + this.energyCycle); 
+            let targetSpeed = this.baseSpeed;
+            if (energy > 0.5) targetSpeed *= 1.2 + (this.aggressiveness * 0.2); 
+            else if (energy < -0.5) targetSpeed *= 0.85; 
+            targetSpeed += (Math.random() - 0.5) * 2.0;
+
+            const distRemaining = CONFIG.raceDistance - this.position.z;
+            if (distRemaining < 100 && distRemaining > 0) targetSpeed *= 1.1;
+
+            this.position.z += targetSpeed * delta;
+
+            if (this.position.x > 25) this.position.x -= 5 * delta;
+            else if (this.position.x < -25) this.position.x += 5 * delta;
+            else this.position.x += Math.sin(time + this.id * 10) * 2 * delta;
+        }
+
+        // --- 2. MESH SYNC (Always Update to allow collision push) ---
+        this.mesh.position.x = this.position.x;
+        this.mesh.position.z = this.position.z;
+        
+        // --- 3. ANIMATION ---
         if (this.finished) {
             this.mesh.position.y = Math.sin(time * 3 + this.wobblePhase) * 0.2;
-            return;
-        }
-        const energy = Math.sin(time * 0.5 + this.energyCycle); 
-        let targetSpeed = this.baseSpeed;
-        if (energy > 0.5) targetSpeed *= 1.2 + (this.aggressiveness * 0.2); 
-        else if (energy < -0.5) targetSpeed *= 0.85; 
-        targetSpeed += (Math.random() - 0.5) * 2.0;
-
-        const distRemaining = CONFIG.raceDistance - this.position.z;
-        if (distRemaining < 100 && distRemaining > 0) targetSpeed *= 1.1;
-
-        this.position.z += targetSpeed * delta;
-
-        if (this.position.x > 25) this.position.x -= 5 * delta;
-        else if (this.position.x < -25) this.position.x += 5 * delta;
-        else this.position.x += Math.sin(time + this.id * 10) * 2 * delta;
-
-        this.mesh.position.copy(this.position);
-        this.mesh.position.y = Math.sin(time * 5 + this.wobblePhase) * 0.2; 
-        this.mesh.rotation.z = Math.sin(time * 8 + this.wobblePhase) * 0.15; 
-        this.mesh.rotation.y = Math.sin(time * 2 + this.wobblePhase) * 0.1;
-        
-        // Spawn Wake
-        this.wakeTimer += delta;
-        if(this.wakeTimer > 0.15) { // Spawn every 0.15s
-            spawnWake(this.position.x, this.position.z - 1.5, 0.5 + Math.random()*0.5);
-            this.wakeTimer = 0;
+            // Simple idle bobbing for finished ducks
+            this.mesh.rotation.x = 0;
+            this.mesh.rotation.z = Math.sin(time * 3 + this.wobblePhase) * 0.05; 
+        } else {
+            this.mesh.position.y = Math.sin(time * 5 + this.wobblePhase) * 0.2; 
+            this.mesh.rotation.z = Math.sin(time * 8 + this.wobblePhase) * 0.15; 
+            this.mesh.rotation.y = Math.sin(time * 2 + this.wobblePhase) * 0.1;
+            
+            // Spawn Wake
+            this.wakeTimer += delta;
+            if(this.wakeTimer > 0.15) { 
+                spawnWake(this.position.x, this.position.z - 1.5, 0.5 + Math.random()*0.5);
+                this.wakeTimer = 0;
+            }
         }
     }
 }
@@ -636,7 +646,6 @@ function updateUI(leadDuck, sortedDucks) {
         const txtCol = (((r*299)+(g*587)+(b*114))/1000) >= 128 ? '#000' : '#fff';
         
         // OVERRIDE FOR LEADERBOARD NAME TEXT ONLY
-        // We do not change hexColor (used for the box), but we use a lighter color for the text name.
         let nameTextColor = hexColor;
         if(d.id === 5) nameTextColor = '#D69EFC'; // Lighter Purple for readability
         if(d.id === 6) nameTextColor = '#B0BEC5'; // Lighter Grey for readability
@@ -669,11 +678,15 @@ function animate() {
             if (!d.finished && d.position.z >= CONFIG.raceDistance) { d.finished = true; d.finishTime = time; }
         });
         
+        // --- IMPROVED COLLISION DETECTION ---
+        // Loops through all pairs regardless of 'finished' state
         for(let i=0;i<ducks.length;i++) for(let j=i+1;j<ducks.length;j++) {
              const d1=ducks[i], d2=ducks[j];
-             if(d1.finished||d2.finished) continue;
+             
+             // Removed the "if finished continue" check so they still collide
              const dx=d1.position.x-d2.position.x, dz=d1.position.z-d2.position.z;
              const distSq=dx*dx+dz*dz;
+             
              if(distSq < 10.24) {
                  const dist=Math.sqrt(distSq), push=(3.2-dist)*0.5;
                  const nx=dx/dist, nz=dz/dist;
