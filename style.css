@@ -158,7 +158,17 @@ button:hover { background: white; transform: skewX(-10deg) translateY(-2px); box
 #winner-text { font-size: 3rem; color: var(--broadcast-accent); margin: 20px 0 40px 0; font-weight: 700; }
 
 /* Modal Grid */
-.input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+.input-grid { 
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    /* UPDATED: Force 4 rows and fill vertically first */
+    grid-template-rows: repeat(4, auto);
+    grid-auto-flow: column; 
+    
+    gap: 15px; 
+    margin-bottom: 20px; 
+}
+
 .inp-group label { font-size: 0.8rem; color: #aaa; margin-bottom: 5px; display: block; }
 .full-width { margin-bottom: 20px; }
 .modal-buttons { display: flex; justify-content: flex-end; gap: 15px; }
