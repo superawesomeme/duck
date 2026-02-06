@@ -12,12 +12,12 @@ const CONFIG = {
 // Colors for the 8 lanes
 const COLORS = [
     0xF42941, // Red
-    0xE65100, // Orange (UPDATED: Darker/Richer)
+    0xE65100, // Orange (Darker)
     0xF0F136, // Yellow
     0x50C878, // Green
     0x0033FF, // Blue
     0x6A2FA0, // Purple
-    0x37474F, // Grey (UPDATED: Darker Charcoal)
+    0x37474F, // Grey (Darker)
     0xF3F5F7  // White
 ];
 
@@ -31,7 +31,6 @@ function loadRaceData() {
     if (data) {
         storedRaces = JSON.parse(data);
     } else {
-        // DEFAULT_RACES comes from data.js
         storedRaces = JSON.parse(JSON.stringify(DEFAULT_RACES));
     }
     populateRaceSelector();
@@ -53,7 +52,6 @@ function resetData() {
 // -- ABOUT INFO LOGIC --
 function loadAboutInfo() {
     const container = document.getElementById('about-content-container');
-    // Ensure container exists and APP_INFO (from data.js) is loaded
     if (container && typeof APP_INFO !== 'undefined') {
         container.innerHTML = `
             <p><strong>${APP_INFO.title}</strong></p>
@@ -597,7 +595,7 @@ document.getElementById('restart-btn').addEventListener('click', () => {
 
 // LOAD DATA ON INIT
 loadRaceData();
-loadAboutInfo(); // Inject About Text
+loadAboutInfo();
 
 /**
  * MAIN LOOP
@@ -636,12 +634,18 @@ function updateUI(leadDuck, sortedDucks) {
         const hexColor = '#' + d.color.toString(16).padStart(6,'0');
         const r=(d.color>>16)&255, g=(d.color>>8)&255, b=d.color&255;
         const txtCol = (((r*299)+(g*587)+(b*114))/1000) >= 128 ? '#000' : '#fff';
+        
+        // OVERRIDE FOR LEADERBOARD NAME TEXT ONLY
+        // We do not change hexColor (used for the box), but we use a lighter color for the text name.
+        let nameTextColor = hexColor;
+        if(d.id === 5) nameTextColor = '#D69EFC'; // Lighter Purple for readability
+        if(d.id === 6) nameTextColor = '#B0BEC5'; // Lighter Grey for readability
 
         html += `
         <div class="${rowClass}">
             <div class="lb-rank" style="background: ${hexColor}; color: ${txtCol}">${d.id + 1}</div>
             <div class="lb-info-container">
-                <span class="lb-name" style="color: ${hexColor}">${d.name}</span>
+                <span class="lb-name" style="color: ${nameTextColor}">${d.name}</span>
                 <span class="lb-dist">${distText}</span>
             </div>
         </div>`;
