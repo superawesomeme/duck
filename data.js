@@ -3,41 +3,41 @@ const DEFAULT_RACES = [
     {
         id: "race_1",
         name: "Walworth Waddle",
-        ducks: ["James Pond", "Kill Bill", "Goose Wayne", "Great Gatsbill", "Waddle Wonka", "Quack Sparrow", "Luke Skywaddle", "Marty McFly"]
+        ducks: ["Lightning McQuack", "Pâté LaBelle", "Kill Bill", "Quack Sparrow", "Marty McFly", "Waddle Wonka", "James Pond", "Luke Skywaddle"]
     },
     {
         id: "race_2",
         name: "Locksbridge Luge",
-        ducks: ["Egg Sheeran", "Yolko Ono", "Quackie Chan", "Ben Affpeck", "Dr Drake", "Quack Black", "Hugh Quackman", "Quack Efron"]
+        ducks: ["David Peckham", "Shellena Williams", "Eggy the Eagle", "Shaquille O'Teal", "Diego Mallardona", "Crane Rooney", "Roger Featherer", "Paula Radcluck"]
     },
     {
         id: "race_3",
         name: "Dormouse Derby",
-        ducks: ["Paddlington", "Duckleberry", "Chewbeakca", "Moby Duck", "Sis", "Darkwing", "Dog", "xxx"]
+        ducks: ["Gulliver Twist", "Chewbeakca", "Quacky Chan", "Orville", "Paddlington", "Goose Wayne", "Moby Duck", "Sheldon"]
     },
     {
         id: "race_4",
         name: "Harroway Hustle",
-        ducks: ["Mallardona", "Roger Featherer", "David Peckham", "Shaquille O’Bill", "Eggy Eagle", "Zidanegull", "Serena Swims", "Bruno Marsh"]
+        ducks: ["Bruno Marsh", "Egg Sheeran", "Yolko Ono", "Quack Efron", "Ricki Lake", "Feather Locklear", "Amy Winghouse", "Swan Bon Jovi"]
     },
     {
         id: "race_5",
         name: "Test Valley Rally",
-        ducks: ["Warrior", "Mage", "Rogue", "Cleric", "Paladin", "Hunter", "Bard", "Druid"]
+        ducks: ["Splashly Banjo", "Al Orange", "Boris Pecker", "Lou Reed", "Duck Norris", "Joan Rivers", "Quack Black", "Stephen Moorhen"]
     },
     {
         id: "race_6",
         name: "Finkley Down Dash",
-        ducks: ["Pizza", "Burger", "Taco", "Sushi", "Fries", "Donut", "Cookie", "Soda"]
+        ducks: ["Quack the Ripper", "Web Kelly", "Egg Bundy", "Loch Nest", "Maggie Hatcher", "TBC", "Duck Vader", "TBC"]
     },
     {
         id: "race_7",
-        name: "Picket Pitstop",
-        ducks: ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
+        name: "Hawthorn Ride",
+        ducks: ["Waddlesworth", "Charles Duckens", "Bill Shakespeare", "TBC", "Samuel Peeps", "TBC", "Quackbeard", "Don Swan"]
     },
     {
         id: "race_8",
         name: "Social Club Cup",
-        ducks: ["Fire", "Water", "Earth", "Air", "Lightning", "Ice", "Metal", "Wood"]
+        ducks: ["Honkphrey", "Duck Stew", "Hollowaddle", "TBC", "Duckney", "TBC", "Mrs Peep", "Drake Ward"]
     }
 ];
