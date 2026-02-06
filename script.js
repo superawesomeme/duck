@@ -275,7 +275,13 @@ finishGroup.add(p1, p2, fBanner); scene.add(finishGroup);
 
 // Buoys
 const buoyGeo = new THREE.SphereGeometry(1.5, 16, 16);
-const buoyMat = new THREE.MeshStandardMaterial({color: 0xFF3D00});
+// UPDATED: Lighter Orange + Emissive property for flashing
+const buoyMat = new THREE.MeshStandardMaterial({
+    color: 0xFFA726,       // Light Orange
+    emissive: 0xFF6D00,    // Base glow color
+    emissiveIntensity: 0.5 // Initial intensity
+});
+
 for(let i=0; i<CONFIG.raceDistance; i+=50) {
     const b1 = new THREE.Mesh(buoyGeo, buoyMat); b1.position.set(-35, 0, i); scene.add(b1);
     const b2 = new THREE.Mesh(buoyGeo, buoyMat); b2.position.set(35, 0, i); scene.add(b2);
@@ -412,7 +418,6 @@ class Duck {
     }
 
     update(delta, time) {
-        // --- 1. MOVEMENT LOGIC (Only if racing) ---
         if (!this.finished) {
             const energy = Math.sin(time * 0.5 + this.energyCycle); 
             let targetSpeed = this.baseSpeed;
@@ -430,14 +435,11 @@ class Duck {
             else this.position.x += Math.sin(time + this.id * 10) * 2 * delta;
         }
 
-        // --- 2. MESH SYNC (Always Update to allow collision push) ---
         this.mesh.position.x = this.position.x;
         this.mesh.position.z = this.position.z;
         
-        // --- 3. ANIMATION ---
         if (this.finished) {
             this.mesh.position.y = Math.sin(time * 3 + this.wobblePhase) * 0.2;
-            // Simple idle bobbing for finished ducks
             this.mesh.rotation.x = 0;
             this.mesh.rotation.z = Math.sin(time * 3 + this.wobblePhase) * 0.05; 
         } else {
@@ -445,7 +447,6 @@ class Duck {
             this.mesh.rotation.z = Math.sin(time * 8 + this.wobblePhase) * 0.15; 
             this.mesh.rotation.y = Math.sin(time * 2 + this.wobblePhase) * 0.1;
             
-            // Spawn Wake
             this.wakeTimer += delta;
             if(this.wakeTimer > 0.15) { 
                 spawnWake(this.position.x, this.position.z - 1.5, 0.5 + Math.random()*0.5);
@@ -668,6 +669,10 @@ function animate() {
     const delta = clock.getDelta(), time = clock.getElapsedTime();
     water.material.uniforms.time.value = time;
     
+    // UPDATED: Buoy Flash Effect
+    const flashIntensity = (Math.sin(time * 3) + 1) * 0.5; // Pulse between 0 and 1
+    buoyMat.emissiveIntensity = 0.2 + (flashIntensity * 0.8);
+
     // Update Wakes
     if(isRacing) updateWakes(delta);
 
@@ -678,15 +683,11 @@ function animate() {
             if (!d.finished && d.position.z >= CONFIG.raceDistance) { d.finished = true; d.finishTime = time; }
         });
         
-        // --- IMPROVED COLLISION DETECTION ---
-        // Loops through all pairs regardless of 'finished' state
         for(let i=0;i<ducks.length;i++) for(let j=i+1;j<ducks.length;j++) {
              const d1=ducks[i], d2=ducks[j];
-             
-             // Removed the "if finished continue" check so they still collide
+             // Collision logic continues regardless of finished state
              const dx=d1.position.x-d2.position.x, dz=d1.position.z-d2.position.z;
              const distSq=dx*dx+dz*dz;
-             
              if(distSq < 10.24) {
                  const dist=Math.sqrt(distSq), push=(3.2-dist)*0.5;
                  const nx=dx/dist, nz=dz/dist;
