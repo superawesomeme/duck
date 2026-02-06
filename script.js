@@ -12,12 +12,12 @@ const CONFIG = {
 // Colors for the 8 lanes
 const COLORS = [
     0xF42941, // Red
-    0xE9862A, // Orange
+    0xE65100, // Orange (UPDATED: Darker/Richer)
     0xF0F136, // Yellow
     0x50C878, // Green
     0x0033FF, // Blue
     0x6A2FA0, // Purple
-    0x708090, // Grey
+    0x37474F, // Grey (UPDATED: Darker Charcoal)
     0xF3F5F7  // White
 ];
 
