@@ -128,7 +128,16 @@ select:focus, input:focus { border-color: var(--broadcast-accent); }
     margin-bottom: 20px; width: 500px; margin-left: auto; margin-right: auto;
     padding: 0;
 }
-.preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 15px; }
+
+.preview-grid { 
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    /* UPDATED: Define 4 rows and fill columns first */
+    grid-template-rows: repeat(4, auto);
+    grid-auto-flow: column; 
+    gap: 8px 15px; 
+}
+
 .preview-item { display: flex; align-items: center; background: rgba(255,255,255,0.05); padding: 5px 10px; }
 .preview-num {
     width: 25px; height: 25px; line-height: 25px; text-align: center; font-weight: 700;
