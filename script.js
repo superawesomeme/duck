@@ -15,7 +15,7 @@ const COLORS = [
     0xE9862A, // Orange
     0xF0F136, // Yellow
     0x50C878, // Green
-    0x0033FF, // Blue (UPDATED to Richer Blue)
+    0x0033FF, // Blue
     0x6A2FA0, // Purple
     0x708090, // Grey
     0xF3F5F7  // White
@@ -47,6 +47,22 @@ function resetData() {
         localStorage.removeItem('duckRaceData_v2');
         loadRaceData();
         alert("Data reset.");
+    }
+}
+
+// -- ABOUT INFO LOGIC --
+function loadAboutInfo() {
+    const container = document.getElementById('about-content-container');
+    // Ensure container exists and APP_INFO (from data.js) is loaded
+    if (container && typeof APP_INFO !== 'undefined') {
+        container.innerHTML = `
+            <p><strong>${APP_INFO.title}</strong></p>
+            <p>${APP_INFO.version}</p>
+            <br>
+            <p>${APP_INFO.description}</p>
+            <br>
+            <p style="color:#666; font-size: 0.9rem;">${APP_INFO.copyright}</p>
+        `;
     }
 }
 
@@ -472,6 +488,11 @@ const speedEl = document.getElementById('speed-stat');
 const raceSelect = document.getElementById('race-select');
 const duckPreview = document.getElementById('duck-preview');
 
+// NEW: Button Elements
+const aboutBtn = document.getElementById('about-btn');
+const aboutModal = document.getElementById('about-modal');
+const closeAboutBtn = document.getElementById('close-about-btn');
+
 const manageBtn = document.getElementById('manage-btn');
 const configModal = document.getElementById('config-modal');
 const cancelConfigBtn = document.getElementById('cancel-config-btn');
@@ -509,6 +530,17 @@ raceSelect.addEventListener('change', (e) => {
     updateDuckPreview();
     initDucks();
 });
+
+// ABOUT BUTTON LOGIC
+if(aboutBtn && aboutModal && closeAboutBtn) {
+    aboutBtn.addEventListener('click', () => {
+        aboutModal.classList.remove('hidden');
+    });
+
+    closeAboutBtn.addEventListener('click', () => {
+        aboutModal.classList.add('hidden');
+    });
+}
 
 manageBtn.addEventListener('click', () => {
     configModal.classList.remove('hidden');
@@ -565,6 +597,7 @@ document.getElementById('restart-btn').addEventListener('click', () => {
 
 // LOAD DATA ON INIT
 loadRaceData();
+loadAboutInfo(); // Inject About Text
 
 /**
  * MAIN LOOP

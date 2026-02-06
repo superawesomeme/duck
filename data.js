@@ -1,4 +1,12 @@
 // data.js
+
+const APP_INFO = {
+    title: "Duck Racing Simulator",
+    version: "Version 0.1",
+    description: "Developed for Picket Piece Social Club. This is a real-time 3D racing simulation powered by Three.js and WebGL. Features include dynamic water physics, custom event management, and live telemetry tracking.",
+    copyright: "© 2026 Shaun Daubney. All rights reserved."
+};
+
 const DEFAULT_RACES = [
     {
         id: "race_1",
