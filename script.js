@@ -12,18 +12,52 @@ const CONFIG = {
 // Colors for the 8 lanes
 const COLORS = [
     0xF42941, // Red
-    0xE65100, // Orange
+    0xE65100, // Orange (Darker)
     0xF0F136, // Yellow
     0x50C878, // Green
     0x0033FF, // Blue
     0x6A2FA0, // Purple
-    0x37474F, // Grey
+    0x37474F, // Grey (Darker)
     0xF3F5F7  // White
 ];
 
 // App State
 let storedRaces = [];
 let currentRaceIndex = 0;
+
+// -- AUDIO SETUP --
+const sfxRiver = new Audio('audio/river_looped.mp3');
+sfxRiver.loop = true;
+sfxRiver.volume = 0.6; 
+
+const sfxStart = new Audio('audio/start.mp3');
+sfxStart.volume = 1.0;
+
+const sfxWinner = new Audio('audio/winner.mp3');
+sfxWinner.volume = 1.0;
+
+// Audio Fade Logic
+let fadeInterval = null; 
+
+function fadeOutAudio(audio, duration) {
+    if(fadeInterval) clearInterval(fadeInterval);
+    
+    const startVolume = audio.volume;
+    const stepTime = 50; 
+    const steps = duration / stepTime;
+    const stepAmount = startVolume / steps;
+    
+    fadeInterval = setInterval(() => {
+        if (audio.volume > stepAmount) {
+            audio.volume -= stepAmount;
+        } else {
+            audio.volume = 0;
+            audio.pause();
+            clearInterval(fadeInterval);
+            fadeInterval = null;
+        }
+    }, stepTime);
+}
 
 // -- STORAGE LOGIC --
 function loadRaceData() {
@@ -210,19 +244,15 @@ function createTrackSiding(imagePath, x, z, side) {
     const group = new THREE.Group();
     
     // Concrete Base
-    const length = 55; 
-    const height = 10; 
-    const depth = 2;
-    
+    const length = 55; height = 10; depth = 2;
     const baseGeo = new THREE.BoxGeometry(depth, height, length);
     const baseMat = new THREE.MeshStandardMaterial({ color: 0x999999 }); 
     const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.y = height / 2 - 1; 
-    base.castShadow = true;
+    base.position.y = height / 2 - 1; base.castShadow = true;
     group.add(base);
 
     // Ad Face
-    const tex = textureLoader.load(imagePath); // Load image from path
+    const tex = textureLoader.load(imagePath);
     const faceGeo = new THREE.PlaneGeometry(length - 2, height - 2);
     const faceMat = new THREE.MeshBasicMaterial({ map: tex });
     const face = new THREE.Mesh(faceGeo, faceMat);
@@ -239,19 +269,13 @@ function createTrackSiding(imagePath, x, z, side) {
 }
 
 // POPULATE WORLD
-const adImages = [
-    "images/sidings/1.jpg", 
-    "images/sidings/2.jpg", 
-    "images/sidings/3.jpg", 
-    "images/sidings/4.jpg"
-];
+const adImages = ["images/sidings/1.jpg", "images/sidings/2.jpg", "images/sidings/3.jpg", "images/sidings/4.jpg"];
 const sidingInterval = 60; 
 
 for(let z = -105; z < CONFIG.raceDistance + 300; z += 15) {
     if (z > -50 && Math.abs(z % sidingInterval) < 0.1) {
         const img = adImages[Math.floor(Math.random() * adImages.length)];
         landscapeGroup.add(createTrackSiding(img, -85, z, -1));
-        
         const img2 = adImages[Math.floor(Math.random() * adImages.length)];
         landscapeGroup.add(createTrackSiding(img2, 85, z, 1));
         continue; 
@@ -273,15 +297,9 @@ const p1 = new THREE.Mesh(new THREE.BoxGeometry(2, 25, 2), new THREE.MeshStandar
 const p2 = p1.clone(); p2.position.set(35, 12.5, CONFIG.raceDistance);
 finishGroup.add(p1, p2, fBanner); scene.add(finishGroup);
 
-// Buoys
+// Buoys (Lighter Orange + Emissive)
 const buoyGeo = new THREE.SphereGeometry(1.5, 16, 16);
-// UPDATED: Lighter Orange + Emissive property for flashing
-const buoyMat = new THREE.MeshStandardMaterial({
-    color: 0xFFA726,       // Light Orange
-    emissive: 0xFF6D00,    // Base glow color
-    emissiveIntensity: 0.5 // Initial intensity
-});
-
+const buoyMat = new THREE.MeshStandardMaterial({ color: 0xFFA726, emissive: 0xFF6D00, emissiveIntensity: 0.5 });
 for(let i=0; i<CONFIG.raceDistance; i+=50) {
     const b1 = new THREE.Mesh(buoyGeo, buoyMat); b1.position.set(-35, 0, i); scene.add(b1);
     const b2 = new THREE.Mesh(buoyGeo, buoyMat); b2.position.set(35, 0, i); scene.add(b2);
@@ -461,7 +479,6 @@ class Duck {
  */
 let ducks = [];
 let isRacing = false;
-let raceStartTime = 0;
 let raceEnded = false;
 
 function initDucks() {
@@ -486,6 +503,121 @@ function initDucks() {
 }
 
 /**
+ * FIREWORKS SYSTEM
+ */
+const fxCanvas = document.getElementById('fireworks-canvas');
+const fxCtx = fxCanvas ? fxCanvas.getContext('2d') : null;
+let fireworks = [];
+let particles = [];
+let doFireworks = false;
+let winnerColor = '#ffffff';
+
+function resizeCanvas() {
+    if(fxCanvas) {
+        fxCanvas.width = window.innerWidth;
+        fxCanvas.height = window.innerHeight;
+    }
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas(); 
+
+class Firework {
+    constructor(targetY, color) {
+        this.x = Math.random() * fxCanvas.width;
+        this.y = fxCanvas.height;
+        this.targetY = targetY;
+        this.color = color;
+        this.speed = 10 + Math.random() * 5;
+        this.angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+        this.vx = Math.cos(this.angle) * this.speed;
+        this.vy = Math.sin(this.angle) * this.speed;
+        this.dead = false;
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.05; 
+        if(this.vy >= 0 || this.y <= this.targetY) {
+            this.dead = true;
+            explode(this.x, this.y, this.color);
+        }
+    }
+    draw() {
+        fxCtx.beginPath();
+        fxCtx.arc(this.x, this.y, 3, 0, Math.PI*2);
+        fxCtx.fillStyle = this.color;
+        fxCtx.fill();
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 6;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+        this.alpha = 1;
+        this.decay = 0.01 + Math.random() * 0.02;
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.1; 
+        this.alpha -= this.decay;
+    }
+    draw() {
+        fxCtx.save();
+        fxCtx.globalAlpha = this.alpha;
+        fxCtx.beginPath();
+        fxCtx.arc(this.x, this.y, 2, 0, Math.PI*2);
+        fxCtx.fillStyle = this.color;
+        fxCtx.fill();
+        fxCtx.restore();
+    }
+}
+
+function explode(x, y, color) {
+    for(let i=0; i<80; i++) particles.push(new Particle(x, y, color));
+    for(let i=0; i<20; i++) particles.push(new Particle(x, y, '#ffffff')); 
+}
+
+function updateFireworks() {
+    if(!fxCtx) return;
+    fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+
+    if (doFireworks && Math.random() < 0.25) { 
+        fireworks.push(new Firework(100 + Math.random() * (fxCanvas.height/2), winnerColor));
+    }
+
+    for (let i = fireworks.length - 1; i >= 0; i--) {
+        fireworks[i].update();
+        fireworks[i].draw();
+        if (fireworks[i].dead) fireworks.splice(i, 1);
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        particles[i].draw();
+        if (particles[i].alpha <= 0) particles.splice(i, 1);
+    }
+}
+
+function startFireworks(hexColor) {
+    winnerColor = '#' + hexColor.toString(16).padStart(6,'0');
+    doFireworks = true;
+}
+
+function stopFireworks() {
+    doFireworks = false;
+    fireworks = [];
+    particles = [];
+    if(fxCtx) fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+}
+
+/**
  * UI & INTERACTION
  */
 const startScreen = document.getElementById('start-screen');
@@ -497,7 +629,6 @@ const speedEl = document.getElementById('speed-stat');
 const raceSelect = document.getElementById('race-select');
 const duckPreview = document.getElementById('duck-preview');
 
-// NEW: Button Elements
 const aboutBtn = document.getElementById('about-btn');
 const aboutModal = document.getElementById('about-modal');
 const closeAboutBtn = document.getElementById('close-about-btn');
@@ -540,7 +671,6 @@ raceSelect.addEventListener('change', (e) => {
     initDucks();
 });
 
-// ABOUT BUTTON LOGIC
 if(aboutBtn && aboutModal && closeAboutBtn) {
     aboutBtn.addEventListener('click', () => {
         aboutModal.classList.remove('hidden');
@@ -584,13 +714,30 @@ resetDataBtn.addEventListener('click', () => {
 document.getElementById('start-btn').addEventListener('click', () => {
     startScreen.classList.add('hidden');
     isRacing = true;
-    raceStartTime = performance.now();
+    
+    if(fadeInterval) clearInterval(fadeInterval);
+    sfxRiver.currentTime = 0;
+    sfxRiver.volume = 0.6; 
+    sfxRiver.play().catch(e => console.warn("River sound failed:", e));
+    sfxStart.currentTime = 0;
+    sfxStart.play().catch(e => console.warn("Start sound failed:", e));
+
     raceEnded = false;
 });
 
 document.getElementById('restart-btn').addEventListener('click', () => {
     endScreen.classList.add('hidden');
     startScreen.classList.remove('hidden');
+    
+    if(fadeInterval) {
+        clearInterval(fadeInterval);
+        fadeInterval = null;
+    }
+    sfxRiver.pause(); sfxRiver.currentTime = 0; sfxRiver.volume = 0.6; 
+    sfxWinner.pause(); sfxWinner.currentTime = 0;
+    
+    stopFireworks();
+
     currentRaceIndex = (currentRaceIndex + 1) % storedRaces.length;
     populateRaceSelector(); 
     updateDuckPreview(); 
@@ -600,11 +747,9 @@ document.getElementById('restart-btn').addEventListener('click', () => {
     if (speedEl) speedEl.innerText = "0";
     camera.position.set(0, 15, -30);
     camera.lookAt(0, 0, 50);
-    document.querySelectorAll('.confetti').forEach(e => e.remove());
     initDucks();
 });
 
-// LOAD DATA ON INIT
 loadRaceData();
 loadAboutInfo();
 
@@ -633,9 +778,9 @@ function updateCamera(time, leadDuck, packCenterZ) {
     camera.position.lerp(target, 0.04); camera.lookAt(look);
 }
 
-function updateUI(leadDuck, sortedDucks) {
+function updateUI(leadDuck, sortedDucks, time) {
     if(isRacing && !raceEnded && speedEl) {
-        speedEl.innerText = Math.floor(leadDuck.baseSpeed * 2 + (Math.sin(performance.now() * 0.01) * 5));
+        speedEl.innerText = Math.floor(leadDuck.baseSpeed * 2 + (Math.sin(time * 10) * 5));
     }
     let html = '';
     for(let i=0; i<sortedDucks.length; i++) {
@@ -646,10 +791,9 @@ function updateUI(leadDuck, sortedDucks) {
         const r=(d.color>>16)&255, g=(d.color>>8)&255, b=d.color&255;
         const txtCol = (((r*299)+(g*587)+(b*114))/1000) >= 128 ? '#000' : '#fff';
         
-        // OVERRIDE FOR LEADERBOARD NAME TEXT ONLY
         let nameTextColor = hexColor;
-        if(d.id === 5) nameTextColor = '#D69EFC'; // Lighter Purple for readability
-        if(d.id === 6) nameTextColor = '#B0BEC5'; // Lighter Grey for readability
+        if(d.id === 5) nameTextColor = '#D69EFC'; 
+        if(d.id === 6) nameTextColor = '#B0BEC5'; 
 
         html += `
         <div class="${rowClass}">
@@ -669,12 +813,12 @@ function animate() {
     const delta = clock.getDelta(), time = clock.getElapsedTime();
     water.material.uniforms.time.value = time;
     
-    // UPDATED: Buoy Flash Effect
-    const flashIntensity = (Math.sin(time * 3) + 1) * 0.5; // Pulse between 0 and 1
+    const flashIntensity = (Math.sin(time * 3) + 1) * 0.5; 
     buoyMat.emissiveIntensity = 0.2 + (flashIntensity * 0.8);
 
-    // Update Wakes
     if(isRacing) updateWakes(delta);
+    
+    updateFireworks();
 
     let leadDuck = ducks[0], totalZ = 0;
     if (isRacing) {
@@ -685,7 +829,6 @@ function animate() {
         
         for(let i=0;i<ducks.length;i++) for(let j=i+1;j<ducks.length;j++) {
              const d1=ducks[i], d2=ducks[j];
-             // Collision logic continues regardless of finished state
              const dx=d1.position.x-d2.position.x, dz=d1.position.z-d2.position.z;
              const distSq=dx*dx+dz*dz;
              if(distSq < 10.24) {
@@ -703,13 +846,19 @@ function animate() {
             raceEnded = true;
             winnerText.innerText = `WINNER: #${leadDuck.id + 1} ${leadDuck.name.toUpperCase()}!`;
             winnerText.style.color = '#' + leadDuck.color.toString(16).padStart(6,'0');
-            setTimeout(() => { endScreen.classList.remove('hidden'); spawnConfetti(); }, 2000);
+            setTimeout(() => { endScreen.classList.remove('hidden'); }, 2000);
+            
+            fadeOutAudio(sfxRiver, 4000); 
+            sfxWinner.currentTime = 0;
+            sfxWinner.play().catch(e => console.warn("Winner sound failed:", e));
+            
+            startFireworks(leadDuck.color);
         }
     }
     
     if(leadDuck) {
         updateCamera(time, leadDuck, (ducks.length>0 ? totalZ/ducks.length : 0));
-        updateUI(leadDuck, ducks);
+        updateUI(leadDuck, ducks, time);
     }
     renderer.render(scene, camera);
 }
@@ -718,6 +867,7 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    resizeCanvas(); 
 });
 
 animate();
