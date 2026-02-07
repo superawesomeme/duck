@@ -36,16 +36,16 @@ const DEFAULT_RACES = [
     {
         id: "race_6",
         name: "Finkley Down Dash",
-        ducks: ["Quack the Ripper", "Web Kelly", "Egg Bundy", "Loch Nest", "Maggie Hatcher", "TBC", "Duck Vader", "TBC"]
+        ducks: ["Quack the Ripper", "Web Kelly", "Egg Bundy", "Loch Nest", "Maggie Hatcher", "Mary Shelly", "Duck Vader", "Count Duckula"]
     },
     {
         id: "race_7",
         name: "Hawthorn Ride",
-        ducks: ["Waddlesworth", "Charles Duckens", "Bill Shakespeare", "TBC", "Samuel Peeps", "TBC", "Quackbeard", "Don Swan"]
+        ducks: ["Waddlesworth", "Charles Duckens", "Bill Shakespeare", "Francis Drake", "Samuel Peeps", "Cleopaddler", "Quackbeard", "Swan Quixote"]
     },
     {
         id: "race_8",
         name: "Social Club Cup",
-        ducks: ["Honkphrey", "Duck Stew", "Hollowaddle", "TBC", "Duckney", "TBC", "Mrs Peep", "Drake Ward"]
+        ducks: ["Honkphrey", "Duck Stew", "Hollowaddle", "Hennah", "Duckney", "Nasplasha", "Mrs Peep", "Drake Ward"]
     }
 ];

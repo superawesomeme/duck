@@ -412,19 +412,53 @@ class Duck {
     }
 
     buildModel() {
+        // Define texture filenames in the exact order of IDs (0 to 7)
+        // Order: Red, Orange, Yellow, Green, Blue, Purple, Grey, White
+        const textureFiles = [
+            "red.png", 
+            "orange.png", 
+            "yellow.png", 
+            "green.png", 
+            "blue.png", 
+            "purple.png", 
+            "grey.png", 
+            "white.png"
+        ];
+
         if(loadedDuckModel) {
             const m = loadedDuckModel.clone();
             m.traverse(n => {
                 if(n.isMesh) {
                     n.material = n.material.clone();
-                    n.material.color.setHex(this.color);
-                    n.material.map = null; 
+                    
+                    // 1. Get the correct filename for this duck's ID
+                    const texName = textureFiles[this.id];
+                    
+                    // 2. Load the texture
+                    const tex = textureLoader.load(`models/texture/${texName}`);
+                    
+                    // 3. Fix orientation for GLTF models
+                    tex.flipY = false; 
+                    
+                    // 4. Apply the texture
+                    n.material.map = tex;
+                    
+                    // 5. Set base color to WHITE so the texture shows its true colors
+                    n.material.color.setHex(0xFFFFFF); 
+
                     n.material.roughness = 0.1;
                 }
             });
             this.mesh.add(m);
         } else {
-            const mat = new THREE.MeshStandardMaterial({color: this.color, roughness: 0.2});
+            // Fallback: Apply the same logic to the simple sphere placeholders
+            const texName = textureFiles[this.id];
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0xFFFFFF, 
+                roughness: 0.2,
+                map: textureLoader.load(`models/texture/${texName}`)
+            });
+
             const body = new THREE.Mesh(new THREE.SphereGeometry(1.1,16,16), mat);
             body.scale.set(1, 0.7, 1.4); body.position.y = 0.7; body.castShadow = true;
             const head = new THREE.Mesh(new THREE.SphereGeometry(0.75,16,16), mat);
