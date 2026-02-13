@@ -115,12 +115,17 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
-const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x080820, 1.1 );
+// UPDATED: Lighting for Richness & Depth
+// Ground color (2nd param) lifted from black to dark blue-grey.
+// This fills shadows with color instead of void, adding "richness".
+const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x445566, 1.15 );
 scene.add( hemiLight );
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
 dirLight.position.set(50, 150, 50);
 dirLight.castShadow = true;
+// UPDATED: Shadow Radius creates the "Soft Shadow" blur effect
+dirLight.shadow.radius = 4; 
 dirLight.shadow.mapSize.width = 4096;
 dirLight.shadow.mapSize.height = 4096;
 dirLight.shadow.camera.near = 0.1;
@@ -131,6 +136,9 @@ dirLight.shadow.camera.top = 200;
 dirLight.shadow.camera.bottom = -200;
 dirLight.shadow.bias = -0.0005;
 scene.add(dirLight);
+
+// GLOBAL TEXTURE LOADER
+const textureLoader = new THREE.TextureLoader();
 
 /**
  * SHADERS & MATERIALS
@@ -192,24 +200,63 @@ water.rotation.x = -Math.PI / 2;
 water.position.set(0, -0.5, CONFIG.raceDistance / 2);
 scene.add(water);
 
-// Banks
+// -- BANKS (BLOCK STYLE) --
 const landscapeGroup = new THREE.Group();
 scene.add(landscapeGroup);
-const grassMat = new THREE.MeshStandardMaterial({ color: 0x2E7D32, roughness: 1, flatShading: true });
-const bankGeo = new THREE.PlaneGeometry(500, 4000, 20, 100);
-const posAttribute = bankGeo.attributes.position;
-for (let i = 0; i < posAttribute.count; i++) posAttribute.setZ(i, posAttribute.getZ(i) + Math.random() * 3);
-bankGeo.computeVertexNormals();
 
-const leftBank = new THREE.Mesh(bankGeo, grassMat);
-leftBank.rotation.x = -Math.PI / 2;
-leftBank.position.set(-330, -1.5, CONFIG.raceDistance / 2);
+// LOAD TEXTURES
+// 1. Mud Texture for Bank Sides
+const mudTex = textureLoader.load('models/texture/mud.jpg');
+mudTex.wrapS = THREE.RepeatWrapping;
+mudTex.wrapT = THREE.RepeatWrapping;
+mudTex.repeat.set(50, 1); 
+
+// 2. Bark Texture (For Trees)
+const barkTex = textureLoader.load('models/texture/bark.jpg');
+
+// Define Colors
+const colorGrass = 0x4EBE83; // Minty Green
+
+// Materials
+const matTop = new THREE.MeshStandardMaterial({ 
+    color: colorGrass, 
+    roughness: 0.6, 
+    flatShading: false 
+});
+
+const matSide = new THREE.MeshStandardMaterial({ 
+    color: 0xFFFFFF, // White base for texture
+    map: mudTex,
+    roughness: 0.9, 
+    flatShading: false 
+});
+
+// Array of 6 materials for BoxGeometry
+// Order: Right, Left, Top, Bottom, Front, Back
+const bankMaterials = [
+    matSide, // Right
+    matSide, // Left
+    matTop,  // Top (The Green part)
+    matSide, // Bottom
+    matSide, // Front
+    matSide  // Back
+];
+
+// Geometry setup
+const bankHeight = 30;   // Total thickness
+const surfaceLevel = 1;  // Desired Y level for the grass surface
+const centerY = surfaceLevel - (bankHeight / 2); 
+
+// Width 320 ensures it meets the 160-width water perfectly at x=80
+const bankGeo = new THREE.BoxGeometry(320, bankHeight, CONFIG.raceDistance + 800); 
+
+const leftBank = new THREE.Mesh(bankGeo, bankMaterials);
+leftBank.position.set(-240, centerY, CONFIG.raceDistance / 2);
 leftBank.receiveShadow = true;
 landscapeGroup.add(leftBank);
 
-const rightBank = new THREE.Mesh(bankGeo.clone(), grassMat);
-rightBank.rotation.x = -Math.PI / 2;
-rightBank.position.set(330, -1.5, CONFIG.raceDistance / 2);
+const rightBank = new THREE.Mesh(bankGeo, bankMaterials);
+rightBank.position.set(240, centerY, CONFIG.raceDistance / 2);
 rightBank.receiveShadow = true;
 landscapeGroup.add(rightBank);
 
@@ -217,9 +264,21 @@ landscapeGroup.add(rightBank);
  * OBJECT GENERATION
  */
 const trunkGeo = new THREE.CylinderGeometry(1.5, 2, 6, 8);
-const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5D4037, flatShading: true });
+// Use bark texture
+const trunkMat = new THREE.MeshStandardMaterial({ 
+    color: 0xFFFFFF, 
+    map: barkTex,
+    flatShading: true,
+    roughness: 0.8
+});
+
 const folGeo = new THREE.IcosahedronGeometry(7, 0);
-const folMat = new THREE.MeshStandardMaterial({ color: 0x388E3C, flatShading: true });
+// Solid Green (No texture)
+const folMat = new THREE.MeshStandardMaterial({ 
+    color: 0x388E3C, // Original Green
+    flatShading: true,
+    roughness: 0.8
+});
 
 function createCartoonTree(x, z) {
     const tree = new THREE.Group();
@@ -230,7 +289,9 @@ function createCartoonTree(x, z) {
     const f2 = new THREE.Mesh(folGeo, folMat); f2.position.set(3, 7, 0); f2.scale.set(0.7,0.7,0.7); f2.castShadow = true; tree.add(f2);
     const f3 = new THREE.Mesh(folGeo, folMat); f3.position.set(-3, 8, 2); f3.scale.set(0.8,0.8,0.8); f3.castShadow = true; tree.add(f3);
     
-    tree.position.set(x, 0, z);
+    // Position Y = 1 to sit on top of the grass block
+    tree.position.set(x, 1, z);
+    
     const s = 2.5 + Math.random() * 1.5; 
     tree.scale.set(s,s,s);
     tree.rotation.y = Math.random() * Math.PI;
@@ -238,17 +299,26 @@ function createCartoonTree(x, z) {
 }
 
 // Track Siding Logic
-const textureLoader = new THREE.TextureLoader();
-
 function createTrackSiding(imagePath, x, z, side) {
     const group = new THREE.Group();
     
     // Concrete Base
     const length = 55; height = 10; depth = 2;
     const baseGeo = new THREE.BoxGeometry(depth, height, length);
-    const baseMat = new THREE.MeshStandardMaterial({ color: 0x999999 }); 
+    
+    // UPDATED: Softer Grey-Blue Metal
+    // No texture, just color + material properties
+    const baseMat = new THREE.MeshStandardMaterial({ 
+        color: 0x8DA3BA, // Cool Grey-Blue
+        metalness: 0.5,  // Reduced from 0.8 to avoid being too black
+        roughness: 0.5,  // Balanced for a soft sheen
+        flatShading: false
+    }); 
+    
     const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.y = height / 2 - 1; base.castShadow = true;
+    
+    base.position.y = height / 2 - 1; 
+    base.castShadow = true;
     group.add(base);
 
     // Ad Face
@@ -264,7 +334,9 @@ function createTrackSiding(imagePath, x, z, side) {
     face.rotation.y = yRot;
     
     group.add(face);
-    group.position.set(x, 0, z);
+    
+    // Position Y = 2 so the base sits on top of the grass (y=1)
+    group.position.set(x, 2, z);
     return group;
 }
 
@@ -879,7 +951,17 @@ function animate() {
         if (ducks.some(d => d.finished) && !raceEnded) {
             raceEnded = true;
             winnerText.innerText = `WINNER: #${leadDuck.id + 1} ${leadDuck.name.toUpperCase()}!`;
-            winnerText.style.color = '#' + leadDuck.color.toString(16).padStart(6,'0');
+            
+            // --- UPDATED WINNER TEXT COLOR LOGIC ---
+            // Default to base color
+            let winnerTextColor = '#' + leadDuck.color.toString(16).padStart(6,'0');
+            // Overrides for Purple (5) and Grey (6) to match Leaderboard style
+            if (leadDuck.id === 5) winnerTextColor = '#D69EFC'; 
+            if (leadDuck.id === 6) winnerTextColor = '#B0BEC5'; 
+            
+            winnerText.style.color = winnerTextColor;
+            // ----------------------------------------
+
             setTimeout(() => { endScreen.classList.remove('hidden'); }, 2000);
             
             fadeOutAudio(sfxRiver, 4000); 
