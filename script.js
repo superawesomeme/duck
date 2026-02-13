@@ -455,6 +455,11 @@ class Duck {
 
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(cvs), depthWrite: false, depthTest: true}));
         sprite.position.set(0, 7.5, 0); sprite.scale.set(10, 2.5, 1);
+        
+        // FIXES FOR DISAPPEARING NAMES
+        sprite.frustumCulled = false; // Always render, even if the center is off-screen
+        sprite.renderOrder = 100;     // Force on top of water/particles
+        
         this.mesh.add(sprite);
     }
 
@@ -563,11 +568,10 @@ function initDucks() {
  */
 const fxCanvas = document.getElementById('fireworks-canvas');
 const fxCtx = fxCanvas ? fxCanvas.getContext('2d') : null;
-// --- NEW: Force Fireworks On Top of UI ---
+// Force fireworks on top of UI
 if (fxCanvas) {
     fxCanvas.style.zIndex = "9999"; 
 }
-// ----------------------------------------
 
 let fireworks = [];
 let particles = [];
