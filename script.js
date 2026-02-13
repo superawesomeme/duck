@@ -115,17 +115,14 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
-// UPDATED: Lighting for Richness & Depth
-// Ground color (2nd param) lifted from black to dark blue-grey.
-// This fills shadows with color instead of void, adding "richness".
+// Lighting for Richness & Depth
 const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x445566, 1.15 );
 scene.add( hemiLight );
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
 dirLight.position.set(50, 150, 50);
 dirLight.castShadow = true;
-// UPDATED: Shadow Radius creates the "Soft Shadow" blur effect
-dirLight.shadow.radius = 4; 
+dirLight.shadow.radius = 4; // Soft Shadows
 dirLight.shadow.mapSize.width = 4096;
 dirLight.shadow.mapSize.height = 4096;
 dirLight.shadow.camera.near = 0.1;
@@ -205,13 +202,11 @@ const landscapeGroup = new THREE.Group();
 scene.add(landscapeGroup);
 
 // LOAD TEXTURES
-// 1. Mud Texture for Bank Sides
 const mudTex = textureLoader.load('models/texture/mud.jpg');
 mudTex.wrapS = THREE.RepeatWrapping;
 mudTex.wrapT = THREE.RepeatWrapping;
 mudTex.repeat.set(50, 1); 
 
-// 2. Bark Texture (For Trees)
 const barkTex = textureLoader.load('models/texture/bark.jpg');
 
 // Define Colors
@@ -231,23 +226,13 @@ const matSide = new THREE.MeshStandardMaterial({
     flatShading: false 
 });
 
-// Array of 6 materials for BoxGeometry
-// Order: Right, Left, Top, Bottom, Front, Back
 const bankMaterials = [
-    matSide, // Right
-    matSide, // Left
-    matTop,  // Top (The Green part)
-    matSide, // Bottom
-    matSide, // Front
-    matSide  // Back
+    matSide, matSide, matTop, matSide, matSide, matSide
 ];
 
-// Geometry setup
-const bankHeight = 30;   // Total thickness
-const surfaceLevel = 1;  // Desired Y level for the grass surface
+const bankHeight = 30;   
+const surfaceLevel = 1;  
 const centerY = surfaceLevel - (bankHeight / 2); 
-
-// Width 320 ensures it meets the 160-width water perfectly at x=80
 const bankGeo = new THREE.BoxGeometry(320, bankHeight, CONFIG.raceDistance + 800); 
 
 const leftBank = new THREE.Mesh(bankGeo, bankMaterials);
@@ -264,7 +249,6 @@ landscapeGroup.add(rightBank);
  * OBJECT GENERATION
  */
 const trunkGeo = new THREE.CylinderGeometry(1.5, 2, 6, 8);
-// Use bark texture
 const trunkMat = new THREE.MeshStandardMaterial({ 
     color: 0xFFFFFF, 
     map: barkTex,
@@ -273,9 +257,8 @@ const trunkMat = new THREE.MeshStandardMaterial({
 });
 
 const folGeo = new THREE.IcosahedronGeometry(7, 0);
-// Solid Green (No texture)
 const folMat = new THREE.MeshStandardMaterial({ 
-    color: 0x388E3C, // Original Green
+    color: 0x388E3C, // Solid Green
     flatShading: true,
     roughness: 0.8
 });
@@ -289,7 +272,6 @@ function createCartoonTree(x, z) {
     const f2 = new THREE.Mesh(folGeo, folMat); f2.position.set(3, 7, 0); f2.scale.set(0.7,0.7,0.7); f2.castShadow = true; tree.add(f2);
     const f3 = new THREE.Mesh(folGeo, folMat); f3.position.set(-3, 8, 2); f3.scale.set(0.8,0.8,0.8); f3.castShadow = true; tree.add(f3);
     
-    // Position Y = 1 to sit on top of the grass block
     tree.position.set(x, 1, z);
     
     const s = 2.5 + Math.random() * 1.5; 
@@ -302,26 +284,21 @@ function createCartoonTree(x, z) {
 function createTrackSiding(imagePath, x, z, side) {
     const group = new THREE.Group();
     
-    // Concrete Base
     const length = 55; height = 10; depth = 2;
     const baseGeo = new THREE.BoxGeometry(depth, height, length);
     
-    // UPDATED: Softer Grey-Blue Metal
-    // No texture, just color + material properties
+    // Softer Grey-Blue Metal
     const baseMat = new THREE.MeshStandardMaterial({ 
         color: 0x8DA3BA, // Cool Grey-Blue
-        metalness: 0.5,  // Reduced from 0.8 to avoid being too black
-        roughness: 0.5,  // Balanced for a soft sheen
+        metalness: 0.5,  
+        roughness: 0.5,  
         flatShading: false
     }); 
     
     const base = new THREE.Mesh(baseGeo, baseMat);
-    
-    base.position.y = height / 2 - 1; 
-    base.castShadow = true;
+    base.position.y = height / 2 - 1; base.castShadow = true;
     group.add(base);
 
-    // Ad Face
     const tex = textureLoader.load(imagePath);
     const faceGeo = new THREE.PlaneGeometry(length - 2, height - 2);
     const faceMat = new THREE.MeshBasicMaterial({ map: tex });
@@ -334,8 +311,6 @@ function createTrackSiding(imagePath, x, z, side) {
     face.rotation.y = yRot;
     
     group.add(face);
-    
-    // Position Y = 2 so the base sits on top of the grass (y=1)
     group.position.set(x, 2, z);
     return group;
 }
@@ -369,7 +344,7 @@ const p1 = new THREE.Mesh(new THREE.BoxGeometry(2, 25, 2), new THREE.MeshStandar
 const p2 = p1.clone(); p2.position.set(35, 12.5, CONFIG.raceDistance);
 finishGroup.add(p1, p2, fBanner); scene.add(finishGroup);
 
-// Buoys (Lighter Orange + Emissive)
+// Buoys
 const buoyGeo = new THREE.SphereGeometry(1.5, 16, 16);
 const buoyMat = new THREE.MeshStandardMaterial({ color: 0xFFA726, emissive: 0xFF6D00, emissiveIntensity: 0.5 });
 for(let i=0; i<CONFIG.raceDistance; i+=50) {
@@ -484,53 +459,28 @@ class Duck {
     }
 
     buildModel() {
-        // Define texture filenames in the exact order of IDs (0 to 7)
-        // Order: Red, Orange, Yellow, Green, Blue, Purple, Grey, White
-        const textureFiles = [
-            "red.png", 
-            "orange.png", 
-            "yellow.png", 
-            "green.png", 
-            "blue.png", 
-            "purple.png", 
-            "grey.png", 
-            "white.png"
-        ];
-
+        const textureFiles = ["red.png", "orange.png", "yellow.png", "green.png", "blue.png", "purple.png", "grey.png", "white.png"];
         if(loadedDuckModel) {
             const m = loadedDuckModel.clone();
             m.traverse(n => {
                 if(n.isMesh) {
                     n.material = n.material.clone();
-                    
-                    // 1. Get the correct filename for this duck's ID
                     const texName = textureFiles[this.id];
-                    
-                    // 2. Load the texture
                     const tex = textureLoader.load(`models/texture/${texName}`);
-                    
-                    // 3. Fix orientation for GLTF models
                     tex.flipY = false; 
-                    
-                    // 4. Apply the texture
                     n.material.map = tex;
-                    
-                    // 5. Set base color to WHITE so the texture shows its true colors
                     n.material.color.setHex(0xFFFFFF); 
-
                     n.material.roughness = 0.1;
                 }
             });
             this.mesh.add(m);
         } else {
-            // Fallback: Apply the same logic to the simple sphere placeholders
             const texName = textureFiles[this.id];
             const mat = new THREE.MeshStandardMaterial({
                 color: 0xFFFFFF, 
                 roughness: 0.2,
                 map: textureLoader.load(`models/texture/${texName}`)
             });
-
             const body = new THREE.Mesh(new THREE.SphereGeometry(1.1,16,16), mat);
             body.scale.set(1, 0.7, 1.4); body.position.y = 0.7; body.castShadow = true;
             const head = new THREE.Mesh(new THREE.SphereGeometry(0.75,16,16), mat);
@@ -613,6 +563,12 @@ function initDucks() {
  */
 const fxCanvas = document.getElementById('fireworks-canvas');
 const fxCtx = fxCanvas ? fxCanvas.getContext('2d') : null;
+// --- NEW: Force Fireworks On Top of UI ---
+if (fxCanvas) {
+    fxCanvas.style.zIndex = "9999"; 
+}
+// ----------------------------------------
+
 let fireworks = [];
 let particles = [];
 let doFireworks = false;
@@ -937,8 +893,21 @@ function animate() {
              const d1=ducks[i], d2=ducks[j];
              const dx=d1.position.x-d2.position.x, dz=d1.position.z-d2.position.z;
              const distSq=dx*dx+dz*dz;
-             if(distSq < 10.24) {
-                 const dist=Math.sqrt(distSq), push=(3.2-dist)*0.5;
+             
+             // HARD COLLISION LOGIC
+             // Threshold 4.8 units (squared ~23.0) covers the full duck width
+             if(distSq < 23.0) {
+                 const dist=Math.sqrt(distSq);
+                 if(dist < 0.001) { // Avoid divide by zero
+                     d1.position.x += 0.1; continue; 
+                 }
+                 
+                 // Calculate overlap amount
+                 const overlap = 4.8 - dist;
+                 
+                 // Push force: separation + 20% bounce factor
+                 const push = overlap * 0.6; 
+                 
                  const nx=dx/dist, nz=dz/dist;
                  d1.position.x+=nx*push; d1.position.z+=nz*push;
                  d2.position.x-=nx*push; d2.position.z-=nz*push;
@@ -948,7 +917,7 @@ function animate() {
         ducks.sort((a,b) => (a.finished&&b.finished)?a.finishTime-b.finishTime : (a.finished?-1 : (b.finished?1 : b.position.z-a.position.z)));
         leadDuck = ducks[0];
 
-        if (ducks.some(d => d.finished) && !raceEnded) {
+        if (ducks.every(d => d.finished) && !raceEnded) {
             raceEnded = true;
             winnerText.innerText = `WINNER: #${leadDuck.id + 1} ${leadDuck.name.toUpperCase()}!`;
             
