@@ -457,8 +457,8 @@ class Duck {
         sprite.position.set(0, 7.5, 0); sprite.scale.set(10, 2.5, 1);
         
         // FIXES FOR DISAPPEARING NAMES
-        sprite.frustumCulled = false; // Always render, even if the center is off-screen
-        sprite.renderOrder = 100;     // Force on top of water/particles
+        sprite.frustumCulled = false; // Always render, even if center is off-screen
+        sprite.renderOrder = 100;     // Force on top
         
         this.mesh.add(sprite);
     }
@@ -824,8 +824,9 @@ loadAboutInfo();
  */
 const clock = new THREE.Clock();
 let camAngle = 0, camTimer = 0;
+let cameraLookAt = new THREE.Vector3(0,0,50); // For smooth camera rotation
 
-function updateCamera(time, leadDuck, packCenterZ) {
+function updateCamera(time, delta, leadDuck, packCenterZ) {
     if (time > camTimer + 10) { camTimer = time; camAngle = (camAngle + 1) % 3; }
     let target = new THREE.Vector3(), look = new THREE.Vector3();
     
@@ -841,7 +842,11 @@ function updateCamera(time, leadDuck, packCenterZ) {
         else if (camAngle === 1) { target.set(25, 20, packCenterZ - 15); look.set(0, 0, packCenterZ + 40); } 
         else { target.set(-28, 8, leadDuck.position.z + 5); look.set(leadDuck.position.x, 2, leadDuck.position.z + 10); }
     }
-    camera.position.lerp(target, 0.04); camera.lookAt(look);
+    
+    // SMOOTH CAMERA MOVEMENTS
+    camera.position.lerp(target, 5.0 * delta); 
+    cameraLookAt.lerp(look, 5.0 * delta);
+    camera.lookAt(cameraLookAt);
 }
 
 function updateUI(leadDuck, sortedDucks, time) {
@@ -946,7 +951,7 @@ function animate() {
     }
     
     if(leadDuck) {
-        updateCamera(time, leadDuck, (ducks.length>0 ? totalZ/ducks.length : 0));
+        updateCamera(time, delta, leadDuck, (ducks.length>0 ? totalZ/ducks.length : 0));
         updateUI(leadDuck, ducks, time);
     }
     renderer.render(scene, camera);
