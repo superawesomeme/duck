@@ -24,6 +24,13 @@ const COLORS = [
 // App State
 let storedRaces = [];
 let currentRaceIndex = 0;
+let gameSpeed = 1.0; 
+
+// Flags for race progression
+let isRacing = false;
+let raceEnded = false;
+let firstFinishTriggered = false; 
+let winnerFinishTime = 0; // Timer for cinematic camera
 
 // -- AUDIO SETUP --
 const sfxRiver = new Audio('audio/river_looped.mp3');
@@ -134,6 +141,22 @@ dirLight.shadow.camera.bottom = -200;
 dirLight.shadow.bias = -0.0005;
 scene.add(dirLight);
 
+// --- SUN FLARE (FAKE BLOOM) ---
+const flareCanvas = document.createElement('canvas');
+flareCanvas.width = 64; flareCanvas.height = 64;
+const fCtx = flareCanvas.getContext('2d');
+const grd = fCtx.createRadialGradient(32,32,0,32,32,32);
+grd.addColorStop(0, 'rgba(255, 255, 255, 1)');
+grd.addColorStop(0.2, 'rgba(255, 255, 200, 0.4)');
+grd.addColorStop(1, 'rgba(255, 255, 255, 0)');
+fCtx.fillStyle = grd; fCtx.fillRect(0,0,64,64);
+const flareTex = new THREE.CanvasTexture(flareCanvas);
+const flareMat = new THREE.SpriteMaterial({ map: flareTex, transparent: true, blending: THREE.AdditiveBlending });
+const sunFlare = new THREE.Sprite(flareMat);
+sunFlare.scale.set(80, 80, 1);
+sunFlare.position.set(50, 150, 50); // Match DirLight pos
+scene.add(sunFlare);
+
 // GLOBAL TEXTURE LOADER
 const textureLoader = new THREE.TextureLoader();
 
@@ -170,7 +193,7 @@ const waterFragmentShader = `
         vec3 color = mix(colorDeep, colorSurface, mixStrength);
         float glitter = sin(vElevation * 20.0) * cos(vElevation * 15.0);
         float specular = step(0.9, glitter); 
-        color += vec3(1.0) * specular * 0.2;
+        color += vec3(1.0) * specular * 0.4; // Increased glitter for Bloom look
         gl_FragColor = vec4(color, 0.95);
         #include <fog_fragment>
     }
@@ -197,125 +220,115 @@ water.rotation.x = -Math.PI / 2;
 water.position.set(0, -0.5, CONFIG.raceDistance / 2);
 scene.add(water);
 
+// --- HELPER: Procedural Gradient Material (Robust Injection) ---
+function setupGradientMaterial(material, colorBottomHex, colorTopHex, minY, maxY) {
+    material.onBeforeCompile = (shader) => {
+        shader.uniforms.cBottom = { value: new THREE.Color(colorBottomHex) };
+        shader.uniforms.cTop = { value: new THREE.Color(colorTopHex) };
+        
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <common>',
+            `#include <common>
+            varying float vLocalY;`
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `#include <begin_vertex>
+            vLocalY = position.y;`
+        );
+
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <common>',
+            `#include <common>
+            uniform vec3 cBottom;
+            uniform vec3 cTop;
+            varying float vLocalY;`
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <color_fragment>',
+            `#include <color_fragment>
+            float gradientT = smoothstep(${minY.toFixed(1)}, ${maxY.toFixed(1)}, vLocalY);
+            vec3 gradientColor = mix(cBottom, cTop, gradientT);
+            diffuseColor.rgb *= gradientColor;`
+        );
+    };
+    material.needsUpdate = true;
+}
+
+// --- HELPER: Procedural Concrete Texture ---
+const concreteCanvas = document.createElement('canvas');
+concreteCanvas.width = 128; concreteCanvas.height = 128;
+const cCtx = concreteCanvas.getContext('2d');
+cCtx.fillStyle = '#999999'; cCtx.fillRect(0,0,128,128);
+for(let i=0; i<1000; i++) {
+    cCtx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+    cCtx.fillRect(Math.random()*128, Math.random()*128, 2, 2);
+}
+const concreteTex = new THREE.CanvasTexture(concreteCanvas);
+concreteTex.wrapS = THREE.RepeatWrapping; concreteTex.wrapT = THREE.RepeatWrapping;
+
 // -- BANKS (BLOCK STYLE) --
 const landscapeGroup = new THREE.Group();
 scene.add(landscapeGroup);
 
-// LOAD TEXTURES
-// 1. Mud Texture for Bank Sides
 const mudTex = textureLoader.load('models/texture/mud.jpg');
-mudTex.wrapS = THREE.RepeatWrapping;
-mudTex.wrapT = THREE.RepeatWrapping;
-mudTex.repeat.set(50, 1); 
-
-// 2. Bark Texture (For Trees AND Siding Base)
+mudTex.wrapS = THREE.RepeatWrapping; mudTex.wrapT = THREE.RepeatWrapping; mudTex.repeat.set(50, 1); 
 const barkTex = textureLoader.load('models/texture/bark.jpg');
 
-// Define Colors
-const colorGrass = 0x4EBE83; // Minty Green
+// Gradient Grass
+const matTop = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.8, flatShading: false });
+setupGradientMaterial(matTop, 0x2E7D32, 0x8BC34A, -15, 15);
 
-// Materials
-const matTop = new THREE.MeshStandardMaterial({ 
-    color: colorGrass, 
-    roughness: 0.6, 
-    flatShading: false 
-});
+const matSide = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, map: mudTex, roughness: 0.9, flatShading: false });
+const bankMaterials = [ matSide, matSide, matTop, matSide, matSide, matSide ];
 
-const matSide = new THREE.MeshStandardMaterial({ 
-    color: 0xFFFFFF, // White base for texture
-    map: mudTex,
-    roughness: 0.9, 
-    flatShading: false 
-});
-
-// Array of 6 materials for BoxGeometry
-// Order: Right, Left, Top, Bottom, Front, Back
-const bankMaterials = [
-    matSide, // Right
-    matSide, // Left
-    matTop,  // Top (The Green part)
-    matSide, // Bottom
-    matSide, // Front
-    matSide  // Back
-];
-
-// Geometry setup
-const bankHeight = 30;   // Total thickness
-const surfaceLevel = 1;  // Desired Y level for the grass surface
-const centerY = surfaceLevel - (bankHeight / 2); 
-
-// Width 320 ensures it meets the 160-width water perfectly at x=80
+const bankHeight = 30; const surfaceLevel = 1; const centerY = surfaceLevel - (bankHeight / 2); 
 const bankGeo = new THREE.BoxGeometry(320, bankHeight, CONFIG.raceDistance + 800); 
 
 const leftBank = new THREE.Mesh(bankGeo, bankMaterials);
-leftBank.position.set(-240, centerY, CONFIG.raceDistance / 2);
-leftBank.receiveShadow = true;
-landscapeGroup.add(leftBank);
-
+leftBank.position.set(-240, centerY, CONFIG.raceDistance / 2); leftBank.receiveShadow = true; landscapeGroup.add(leftBank);
 const rightBank = new THREE.Mesh(bankGeo, bankMaterials);
-rightBank.position.set(240, centerY, CONFIG.raceDistance / 2);
-rightBank.receiveShadow = true;
-landscapeGroup.add(rightBank);
+rightBank.position.set(240, centerY, CONFIG.raceDistance / 2); rightBank.receiveShadow = true; landscapeGroup.add(rightBank);
 
 /**
  * OBJECT GENERATION
  */
 const trunkGeo = new THREE.CylinderGeometry(1.5, 2, 6, 8);
-// Use bark texture
-const trunkMat = new THREE.MeshStandardMaterial({ 
-    color: 0xFFFFFF, 
-    map: barkTex,
-    flatShading: true,
-    roughness: 0.8
-});
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, map: barkTex, flatShading: true, roughness: 0.8 });
 
-const folGeo = new THREE.IcosahedronGeometry(7, 0);
-// Solid Green (No texture)
-const folMat = new THREE.MeshStandardMaterial({ 
-    color: 0x388E3C, // Original Green
-    flatShading: true,
-    roughness: 0.8
-});
+// Rounder Trees (Detail 1) with Gradient
+const folGeo = new THREE.IcosahedronGeometry(7, 1);
+const folMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, flatShading: false, roughness: 0.8 });
+setupGradientMaterial(folMat, 0x1B5E20, 0xC0CA33, -4, 6);
 
 function createCartoonTree(x, z) {
     const tree = new THREE.Group();
     const trunk = new THREE.Mesh(trunkGeo, trunkMat);
     trunk.position.y = 3; trunk.castShadow = true; tree.add(trunk);
-    
     const f1 = new THREE.Mesh(folGeo, folMat); f1.position.y = 9; f1.castShadow = true; tree.add(f1);
     const f2 = new THREE.Mesh(folGeo, folMat); f2.position.set(3, 7, 0); f2.scale.set(0.7,0.7,0.7); f2.castShadow = true; tree.add(f2);
     const f3 = new THREE.Mesh(folGeo, folMat); f3.position.set(-3, 8, 2); f3.scale.set(0.8,0.8,0.8); f3.castShadow = true; tree.add(f3);
-    
-    // Position Y = 1 to sit on top of the grass block
     tree.position.set(x, 1, z);
-    
-    const s = 2.5 + Math.random() * 1.5; 
-    tree.scale.set(s,s,s);
-    tree.rotation.y = Math.random() * Math.PI;
+    const s = 2.5 + Math.random() * 1.5; tree.scale.set(s,s,s); tree.rotation.y = Math.random() * Math.PI;
     return tree;
 }
 
-// Track Siding Logic
+// Track Siding Logic (Textured Concrete)
 function createTrackSiding(imagePath, x, z, side) {
     const group = new THREE.Group();
-    
-    // Concrete Base
     const length = 55; height = 10; depth = 2;
     const baseGeo = new THREE.BoxGeometry(depth, height, length);
     
-    // UPDATED: Use bark.jpg texture for base
+    // Concrete Texture
     const baseMat = new THREE.MeshStandardMaterial({ 
-        color: 0xFFFFFF,
-        map: barkTex 
+        map: concreteTex,
+        roughness: 0.9,
+        color: 0xAAAAAA 
     }); 
     
     const base = new THREE.Mesh(baseGeo, baseMat);
-    
-    base.position.y = height / 2 - 1; 
-    base.castShadow = true;
-    group.add(base);
+    base.position.y = height / 2 - 1; base.castShadow = true; group.add(base);
 
-    // Ad Face
     const tex = textureLoader.load(imagePath);
     const faceGeo = new THREE.PlaneGeometry(length - 2, height - 2);
     const faceMat = new THREE.MeshBasicMaterial({ map: tex });
@@ -323,13 +336,8 @@ function createTrackSiding(imagePath, x, z, side) {
     
     const xOffset = (side === -1) ? (depth/2 + 0.1) : -(depth/2 + 0.1);
     const yRot = (side === -1) ? Math.PI / 2 : -Math.PI / 2;
-    
-    face.position.set(xOffset, height/2 - 1, 0);
-    face.rotation.y = yRot;
-    
+    face.position.set(xOffset, height/2 - 1, 0); face.rotation.y = yRot;
     group.add(face);
-    
-    // Position Y = 2 so the base sits on top of the grass (y=1)
     group.position.set(x, 2, z);
     return group;
 }
@@ -363,9 +371,9 @@ const p1 = new THREE.Mesh(new THREE.BoxGeometry(2, 25, 2), new THREE.MeshStandar
 const p2 = p1.clone(); p2.position.set(35, 12.5, CONFIG.raceDistance);
 finishGroup.add(p1, p2, fBanner); scene.add(finishGroup);
 
-// Buoys (Lighter Orange + Emissive)
+// Buoys
 const buoyGeo = new THREE.SphereGeometry(1.5, 16, 16);
-const buoyMat = new THREE.MeshStandardMaterial({ color: 0xFFA726, emissive: 0xFF6D00, emissiveIntensity: 0.5 });
+const buoyMat = new THREE.MeshStandardMaterial({ color: 0xFFA726, emissive: 0xFF6D00, emissiveIntensity: 0.8 });
 for(let i=0; i<CONFIG.raceDistance; i+=50) {
     const b1 = new THREE.Mesh(buoyGeo, buoyMat); b1.position.set(-35, 0, i); scene.add(b1);
     const b2 = new THREE.Mesh(buoyGeo, buoyMat); b2.position.set(35, 0, i); scene.add(b2);
@@ -376,31 +384,23 @@ for(let i=0; i<CONFIG.raceDistance; i+=50) {
  */
 const wakeGroup = new THREE.Group();
 scene.add(wakeGroup);
+// FIX: depthWrite: false prevents the ring from "punching a hole" in the water
 const wakeGeo = new THREE.RingGeometry(0.5, 1.2, 8);
-const wakeMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+const wakeMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
 let wakes = [];
 
 function spawnWake(x, z, scale) {
     const wake = new THREE.Mesh(wakeGeo, wakeMat.clone());
-    wake.position.set(x, 0.05, z);
-    wake.rotation.x = -Math.PI / 2;
-    wake.scale.set(scale, scale, 1);
-    wakeGroup.add(wake);
-    wakes.push({ mesh: wake, age: 0 });
+    wake.position.set(x, 0.05, z); wake.rotation.x = -Math.PI / 2; wake.scale.set(scale, scale, 1);
+    wakeGroup.add(wake); wakes.push({ mesh: wake, age: 0 });
 }
 
 function updateWakes(delta) {
     for (let i = wakes.length - 1; i >= 0; i--) {
-        const w = wakes[i];
-        w.age += delta;
-        const s = w.mesh.scale.x + delta * 2.0;
-        w.mesh.scale.set(s, s, 1);
+        const w = wakes[i]; w.age += delta;
+        const s = w.mesh.scale.x + delta * 2.0; w.mesh.scale.set(s, s, 1);
         w.mesh.material.opacity = 0.5 - (w.age * 0.5); 
-        if (w.age > 1.0) {
-            wakeGroup.remove(w.mesh);
-            w.mesh.geometry.dispose(); 
-            wakes.splice(i, 1);
-        }
+        if (w.age > 1.0) { wakeGroup.remove(w.mesh); w.mesh.geometry.dispose(); wakes.splice(i, 1); }
     }
 }
 
@@ -474,57 +474,35 @@ class Duck {
 
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(cvs), depthWrite: false, depthTest: true}));
         sprite.position.set(0, 7.5, 0); sprite.scale.set(10, 2.5, 1);
+        
+        // FIXES FOR DISAPPEARING NAMES
+        sprite.frustumCulled = false; 
+        sprite.renderOrder = 100;     
+        
         this.mesh.add(sprite);
     }
 
     buildModel() {
-        // Define texture filenames in the exact order of IDs (0 to 7)
-        // Order: Red, Orange, Yellow, Green, Blue, Purple, Grey, White
-        const textureFiles = [
-            "red.png", 
-            "orange.png", 
-            "yellow.png", 
-            "green.png", 
-            "blue.png", 
-            "purple.png", 
-            "grey.png", 
-            "white.png"
-        ];
-
+        const textureFiles = ["red.png", "orange.png", "yellow.png", "green.png", "blue.png", "purple.png", "grey.png", "white.png"];
         if(loadedDuckModel) {
             const m = loadedDuckModel.clone();
             m.traverse(n => {
                 if(n.isMesh) {
                     n.material = n.material.clone();
-                    
-                    // 1. Get the correct filename for this duck's ID
                     const texName = textureFiles[this.id];
-                    
-                    // 2. Load the texture
                     const tex = textureLoader.load(`models/texture/${texName}`);
-                    
-                    // 3. Fix orientation for GLTF models
                     tex.flipY = false; 
-                    
-                    // 4. Apply the texture
                     n.material.map = tex;
-                    
-                    // 5. Set base color to WHITE so the texture shows its true colors
                     n.material.color.setHex(0xFFFFFF); 
-
                     n.material.roughness = 0.1;
                 }
             });
             this.mesh.add(m);
         } else {
-            // Fallback: Apply the same logic to the simple sphere placeholders
             const texName = textureFiles[this.id];
             const mat = new THREE.MeshStandardMaterial({
-                color: 0xFFFFFF, 
-                roughness: 0.2,
-                map: textureLoader.load(`models/texture/${texName}`)
+                color: 0xFFFFFF, roughness: 0.2, map: textureLoader.load(`models/texture/${texName}`)
             });
-
             const body = new THREE.Mesh(new THREE.SphereGeometry(1.1,16,16), mat);
             body.scale.set(1, 0.7, 1.4); body.position.y = 0.7; body.castShadow = true;
             const head = new THREE.Mesh(new THREE.SphereGeometry(0.75,16,16), mat);
@@ -578,8 +556,6 @@ class Duck {
  * GAME STATE
  */
 let ducks = [];
-let isRacing = false;
-let raceEnded = false;
 
 function initDucks() {
     ducks.forEach(d => scene.remove(d.mesh));
@@ -607,6 +583,11 @@ function initDucks() {
  */
 const fxCanvas = document.getElementById('fireworks-canvas');
 const fxCtx = fxCanvas ? fxCanvas.getContext('2d') : null;
+// Force fireworks on top of UI
+if (fxCanvas) {
+    fxCanvas.style.zIndex = "9999"; 
+}
+
 let fireworks = [];
 let particles = [];
 let doFireworks = false;
@@ -861,24 +842,48 @@ loadAboutInfo();
  */
 const clock = new THREE.Clock();
 let camAngle = 0, camTimer = 0;
+let cameraLookAt = new THREE.Vector3(0,0,50); 
+let cinematicTarget = new THREE.Vector3();
+let cinematicLook = new THREE.Vector3();
 
-function updateCamera(time, leadDuck, packCenterZ) {
+function updateCamera(time, delta, leadDuck, packCenterZ) {
     if (time > camTimer + 10) { camTimer = time; camAngle = (camAngle + 1) % 3; }
-    let target = new THREE.Vector3(), look = new THREE.Vector3();
+    let target = cinematicTarget, look = cinematicLook; 
     
-    if (raceEnded) {
-        const winner = ducks.find(d => d.finishTime > 0) || leadDuck;
-        const a = time * 0.4;
-        target.set(winner.position.x + Math.sin(a)*12, 6, winner.position.z + Math.cos(a)*12);
-        look.copy(winner.position);
+    if (firstFinishTriggered) {
+        const winner = ducks[0]; // Leader is winner
+        const t = time - winnerFinishTime;
+
+        // SINGLE FLUID MOTION: Start medium-close, spiral out and up
+        // Distance: starts at 15 (medium shot), drifts to 45 (drone shot)
+        const dist = 15 + (t * 5.0); 
+        // Height: starts at 6, drifts to 25
+        const height = 6 + (t * 3.0);
+        // Angle: starts behind (-0.2), slowly rotates
+        const angle = -0.2 + (t * 0.2);
+
+        target.set(
+            winner.position.x + Math.sin(angle) * dist,
+            height,
+            winner.position.z + Math.cos(angle) * dist
+        );
+        
+        // Look slightly above winner to center them nicely
+        look.copy(winner.position).add(new THREE.Vector3(0, 2, 0));
+
     } else if (!isRacing) {
         target.set(0, 20, -35); look.set(0, 0, 10);
     } else {
+        // RACE CAM
         if (camAngle === 0) { target.set(leadDuck.position.x, 8, leadDuck.position.z - 15); look.set(leadDuck.position.x, 2, leadDuck.position.z + 20); } 
         else if (camAngle === 1) { target.set(25, 20, packCenterZ - 15); look.set(0, 0, packCenterZ + 40); } 
         else { target.set(-28, 8, leadDuck.position.z + 5); look.set(leadDuck.position.x, 2, leadDuck.position.z + 10); }
     }
-    camera.position.lerp(target, 0.04); camera.lookAt(look);
+    
+    // Smooth camera lerp
+    camera.position.lerp(target, 4.0 * delta); 
+    cameraLookAt.lerp(look, 4.0 * delta);
+    camera.lookAt(cameraLookAt);
 }
 
 function updateUI(leadDuck, sortedDucks, time) {
@@ -913,7 +918,11 @@ function updateUI(leadDuck, sortedDucks, time) {
 
 function animate() {
     requestAnimationFrame(animate);
-    const delta = clock.getDelta(), time = clock.getElapsedTime();
+    const deltaReal = clock.getDelta();
+    // Use gameSpeed for game logic (ducks), use deltaReal for camera/UI
+    const delta = deltaReal * gameSpeed;
+    const time = clock.getElapsedTime();
+    
     water.material.uniforms.time.value = time;
     
     const flashIntensity = (Math.sin(time * 3) + 1) * 0.5; 
@@ -925,6 +934,7 @@ function animate() {
 
     let leadDuck = ducks[0], totalZ = 0;
     if (isRacing) {
+        
         ducks.forEach(d => {
             d.update(delta, time); totalZ += d.position.z;
             if (!d.finished && d.position.z >= CONFIG.raceDistance) { d.finished = true; d.finishTime = time; }
@@ -934,8 +944,13 @@ function animate() {
              const d1=ducks[i], d2=ducks[j];
              const dx=d1.position.x-d2.position.x, dz=d1.position.z-d2.position.z;
              const distSq=dx*dx+dz*dz;
-             if(distSq < 10.24) {
-                 const dist=Math.sqrt(distSq), push=(3.2-dist)*0.5;
+             
+             // HARD COLLISION
+             if(distSq < 23.0) {
+                 const dist=Math.sqrt(distSq);
+                 if(dist < 0.001) { d1.position.x += 0.1; continue; }
+                 const overlap = 4.8 - dist;
+                 const push = overlap * 0.6; 
                  const nx=dx/dist, nz=dz/dist;
                  d1.position.x+=nx*push; d1.position.z+=nz*push;
                  d2.position.x-=nx*push; d2.position.z-=nz*push;
@@ -945,25 +960,21 @@ function animate() {
         ducks.sort((a,b) => (a.finished&&b.finished)?a.finishTime-b.finishTime : (a.finished?-1 : (b.finished?1 : b.position.z-a.position.z)));
         leadDuck = ducks[0];
 
-        // --- NEW LOGIC: SEPARATE FIRST & LAST FINISH ---
-        
-        // 1. First Duck Finishes: Trigger Audio & Fireworks immediately
+        // --- 1. FIRST FINISH LOGIC (Cinematic Trigger) ---
         if (!firstFinishTriggered && ducks.some(d => d.finished)) {
             firstFinishTriggered = true;
-            // The leadDuck is the winner at this moment
-            const winner = ducks[0];
+            winnerFinishTime = time; // Mark time for camera
             
             sfxWinner.currentTime = 0;
             sfxWinner.play().catch(e => console.warn(e));
             
-            startFireworks(winner.color);
+            startFireworks(leadDuck.color);
         }
 
-        // 2. Last Duck Finishes: Show UI Announcement
+        // --- 2. LAST FINISH LOGIC (Trigger Menu) ---
         if (ducks.every(d => d.finished) && !raceEnded) {
             raceEnded = true;
             
-            // Re-confirm winner based on time just to be safe
             const trueWinner = ducks.reduce((prev, curr) => (prev.finishTime < curr.finishTime) ? prev : curr);
             
             winnerText.innerText = `WINNER: #${trueWinner.id + 1} ${trueWinner.name.toUpperCase()}!`;
@@ -973,16 +984,15 @@ function animate() {
             if (trueWinner.id === 6) winnerTextColor = '#B0BEC5'; 
             
             winnerText.style.color = winnerTextColor;
-
             setTimeout(() => { endScreen.classList.remove('hidden'); }, 2000);
             
             fadeOutAudio(sfxRiver, 4000); 
-            // Note: sfxWinner already played at step 1
         }
     }
     
     if(leadDuck) {
-        updateCamera(time, leadDuck, (ducks.length>0 ? totalZ/ducks.length : 0));
+        // Pass deltaReal so camera stays smooth even if gameSpeed is slow
+        updateCamera(time, deltaReal, leadDuck, (ducks.length>0 ? totalZ/ducks.length : 0));
         updateUI(leadDuck, ducks, time);
     }
     renderer.render(scene, camera);
@@ -996,4 +1006,3 @@ window.addEventListener('resize', () => {
 });
 
 animate();
-
