@@ -28,6 +28,7 @@ let gameSpeed = 1.0;
 
 // Flags for race progression
 let isRacing = false;
+let isCountingDown = false; // New state for countdown
 let raceEnded = false;
 let firstFinishTriggered = false; 
 let winnerFinishTime = 0; // Timer for cinematic camera
@@ -42,6 +43,51 @@ sfxStart.volume = 1.0;
 
 const sfxWinner = new Audio('audio/winner.mp3');
 sfxWinner.volume = 1.0;
+
+// --- GENERATED RACE AUDIO ENGINE (Countdown Synth) ---
+class RaceAudio {
+    constructor() {
+        this.ctx = null;
+        this.gain = null;
+    }
+
+    init() {
+        if (!this.ctx) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AC();
+            this.gain = this.ctx.createGain();
+            this.gain.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+    }
+
+    playTone(freq, type, duration, startTime = 0) {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const env = this.ctx.createGain();
+        
+        osc.type = type;
+        osc.frequency.value = freq;
+        osc.connect(env);
+        env.connect(this.gain);
+        
+        const now = this.ctx.currentTime + startTime;
+        env.gain.setValueAtTime(0, now);
+        env.gain.linearRampToValueAtTime(0.2, now + 0.05);
+        env.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        
+        osc.start(now);
+        osc.stop(now + duration + 0.1);
+    }
+
+    playCountdown(step) {
+        this.init();
+        if (step > 0) {
+            this.playTone(440, 'triangle', 0.3); // Low Beep for 3, 2, 1
+        }
+    }
+}
+const raceAudio = new RaceAudio();
 
 // Audio Fade Logic
 let fadeInterval = null; 
@@ -72,7 +118,13 @@ function loadRaceData() {
     if (data) {
         storedRaces = JSON.parse(data);
     } else {
-        storedRaces = JSON.parse(JSON.stringify(DEFAULT_RACES));
+        // Fallback to DEFAULT_RACES from data.js
+        if (typeof DEFAULT_RACES !== 'undefined') {
+            storedRaces = JSON.parse(JSON.stringify(DEFAULT_RACES));
+        } else {
+            console.error("DEFAULT_RACES not found. Check data.js loading.");
+            storedRaces = [];
+        }
     }
     populateRaceSelector();
     updateDuckPreview();
@@ -277,7 +329,7 @@ const barkTex = textureLoader.load('models/texture/bark.jpg');
 
 // Gradient Grass
 const matTop = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.8, flatShading: false });
-setupGradientMaterial(matTop, 0x2E7D32, 0x8BC34A, -15, 15);
+setupGradientMaterial(matTop, 0x7CB342, 0xDCEDC8, -15, 15);
 
 const matSide = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, map: mudTex, roughness: 0.9, flatShading: false });
 const bankMaterials = [ matSide, matSide, matTop, matSide, matSide, matSide ];
@@ -299,7 +351,7 @@ const trunkMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, map: barkTex,
 // Rounder Trees (Detail 1) with Gradient
 const folGeo = new THREE.IcosahedronGeometry(7, 1);
 const folMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, flatShading: false, roughness: 0.8 });
-setupGradientMaterial(folMat, 0x1B5E20, 0xC0CA33, -4, 6);
+setupGradientMaterial(folMat, 0x43A047, 0xCDDC39, -4, 6);
 
 function createCartoonTree(x, z) {
     const tree = new THREE.Group();
@@ -367,9 +419,23 @@ for(let y=0; y<2; y++) for(let x=0; x<18; x++) if((x+y)%2 === 0) checkCtx.fillRe
 const checkTex = new THREE.CanvasTexture(checkCanvas); checkTex.magFilter = THREE.NearestFilter;
 const fBanner = new THREE.Mesh(new THREE.BoxGeometry(72, 8, 2), new THREE.MeshStandardMaterial({map: checkTex}));
 fBanner.position.set(0, 22, CONFIG.raceDistance); fBanner.castShadow = true;
-const p1 = new THREE.Mesh(new THREE.BoxGeometry(2, 25, 2), new THREE.MeshStandardMaterial({color: 0x5D4037})); p1.position.set(-35, 12.5, CONFIG.raceDistance);
-const p2 = p1.clone(); p2.position.set(35, 12.5, CONFIG.raceDistance);
-finishGroup.add(p1, p2, fBanner); scene.add(finishGroup);
+
+// Bark Texture for Finish poles
+const poleMat = new THREE.MeshStandardMaterial({ map: barkTex, color: 0xFFFFFF });
+const p1 = new THREE.Mesh(new THREE.BoxGeometry(2, 25, 2), poleMat);
+p1.position.set(-35, 12.5, CONFIG.raceDistance);
+const p2 = p1.clone(); 
+p2.position.set(35, 12.5, CONFIG.raceDistance);
+finishGroup.add(p1, p2, fBanner); 
+scene.add(finishGroup);
+
+// Water Finish Line Strip
+const finishLineGeo = new THREE.PlaneGeometry(160, 4);
+const finishLineMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+const finishLineStrip = new THREE.Mesh(finishLineGeo, finishLineMat);
+finishLineStrip.rotation.x = -Math.PI / 2;
+finishLineStrip.position.set(0, 0.05, CONFIG.raceDistance);
+scene.add(finishLineStrip);
 
 // Buoys
 const buoyGeo = new THREE.SphereGeometry(1.5, 16, 16);
@@ -443,6 +509,10 @@ class Duck {
         
         this.buildModel();
         this.addNameLabel();
+        
+        // Update mesh position immediately for countdown visibility
+        this.mesh.position.copy(this.position);
+        
         scene.add(this.mesh);
     }
 
@@ -474,11 +544,8 @@ class Duck {
 
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(cvs), depthWrite: false, depthTest: true}));
         sprite.position.set(0, 7.5, 0); sprite.scale.set(10, 2.5, 1);
-        
-        // FIXES FOR DISAPPEARING NAMES
         sprite.frustumCulled = false; 
         sprite.renderOrder = 100;     
-        
         this.mesh.add(sprite);
     }
 
@@ -563,9 +630,10 @@ function initDucks() {
     wakes.forEach(w => { wakeGroup.remove(w.mesh); });
     wakes = [];
     
-    const raceConfig = storedRaces[currentRaceIndex] || DEFAULT_RACES[0];
-    const names = raceConfig.ducks;
-    
+    const raceConfig = storedRaces[currentRaceIndex] || (typeof DEFAULT_RACES !== 'undefined' ? DEFAULT_RACES[0] : null);
+    if (!raceConfig) return;
+
+    const names = raceConfig.ducks || [];
     const headerTitle = document.getElementById('header-race-name');
     if(headerTitle) headerTitle.innerText = raceConfig.name.toUpperCase();
 
@@ -574,7 +642,8 @@ function initDucks() {
 
     for (let i = 0; i < CONFIG.duckCount; i++) {
         const x = leftBound + (i * spacing) + (Math.random() * 2);
-        ducks.push(new Duck(i, names[i % names.length], x));
+        const name = names[i % names.length] || `Duck ${i+1}`;
+        ducks.push(new Duck(i, name, x));
     }
 }
 
@@ -583,7 +652,6 @@ function initDucks() {
  */
 const fxCanvas = document.getElementById('fireworks-canvas');
 const fxCtx = fxCanvas ? fxCanvas.getContext('2d') : null;
-// Force fireworks on top of UI
 if (fxCanvas) {
     fxCanvas.style.zIndex = "9999"; 
 }
@@ -701,6 +769,16 @@ function stopFireworks() {
 /**
  * UI & INTERACTION
  */
+// COUNTDOWN OVERLAY
+const cdDiv = document.createElement('div');
+cdDiv.id = 'countdown-overlay';
+cdDiv.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    display: none; align-items: center; justify-content: center;
+    z-index: 9000; pointer-events: none;
+`;
+document.body.appendChild(cdDiv);
+
 const startScreen = document.getElementById('start-screen');
 const endScreen = document.getElementById('end-screen');
 const lbContent = document.getElementById('lb-content');
@@ -732,8 +810,10 @@ function populateRaceSelector() {
 }
 
 function updateDuckPreview() {
-    const raceConfig = storedRaces[currentRaceIndex] || DEFAULT_RACES[0];
-    const names = raceConfig.ducks;
+    const raceConfig = storedRaces[currentRaceIndex] || (typeof DEFAULT_RACES !== 'undefined' ? DEFAULT_RACES[0] : null);
+    if (!raceConfig) return;
+    
+    const names = raceConfig.ducks || [];
     let html = '';
     for(let i=0; i<8; i++) {
         const color = COLORS[i];
@@ -792,20 +872,76 @@ resetDataBtn.addEventListener('click', () => {
     configModal.classList.add('hidden');
 });
 
+// START BUTTON - Updated for Countdown
 document.getElementById('start-btn').addEventListener('click', () => {
     startScreen.classList.add('hidden');
-    isRacing = true;
-    firstFinishTriggered = false; // Reset trigger
+    
+    // Position Camera for Start
+    camera.position.set(0, 15, -30);
+    camera.lookAt(0, 0, 50);
+    
+    firstFinishTriggered = false; 
+    raceEnded = false;
+    isRacing = false;
+    isCountingDown = true;
+
+    raceAudio.init();
     
     if(fadeInterval) clearInterval(fadeInterval);
     sfxRiver.currentTime = 0;
     sfxRiver.volume = 0.6; 
     sfxRiver.play().catch(e => console.warn("River sound failed:", e));
-    sfxStart.currentTime = 0;
-    sfxStart.play().catch(e => console.warn("Start sound failed:", e));
-
-    raceEnded = false;
+    
+    runCountdownSequence();
 });
+
+function runCountdownSequence() {
+    const cd = document.getElementById('countdown-overlay');
+    cd.innerHTML = '';
+    cd.style.display = 'flex';
+    
+    let count = 3;
+    
+    const showNum = (num, color) => {
+        cd.innerHTML = `<div style="
+            background: rgba(0, 14, 23, 0.7);
+            padding: 20px 60px;
+            transform: skewX(-15deg);
+            border-left: 8px solid ${color};
+            display: inline-block;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+        ">
+            <span style="
+                font-family: 'Rajdhani', sans-serif;
+                font-weight: 800;
+                font-size: 200px;
+                font-style: italic;
+                color: ${color};
+                display: block;
+                transform: skewX(15deg);
+            ">${num}</span>
+        </div>`;
+    };
+
+    const timer = setInterval(() => {
+        if(count > 0) {
+            showNum(count, '#ED0778'); // hot pink
+            raceAudio.playCountdown(count);
+            count--;
+        } else {
+            clearInterval(timer);
+            // On GO: No visual word, start the original sound
+            cd.innerHTML = "";
+            cd.style.display = 'none';
+            
+            sfxStart.currentTime = 0;
+            sfxStart.play().catch(e => console.warn(e));
+            
+            isCountingDown = false;
+            isRacing = true;
+        }
+    }, 1000);
+}
 
 document.getElementById('restart-btn').addEventListener('click', () => {
     endScreen.classList.add('hidden');
@@ -825,7 +961,8 @@ document.getElementById('restart-btn').addEventListener('click', () => {
     updateDuckPreview(); 
     isRacing = false;
     raceEnded = false;
-    firstFinishTriggered = false; // Reset trigger
+    isCountingDown = false;
+    firstFinishTriggered = false; 
     
     progressFill.style.width = "0%";
     if (speedEl) speedEl.innerText = "0";
@@ -854,12 +991,9 @@ function updateCamera(time, delta, leadDuck, packCenterZ) {
         const winner = ducks[0]; // Leader is winner
         const t = time - winnerFinishTime;
 
-        // SINGLE FLUID MOTION: Start medium-close, spiral out and up
-        // Distance: starts at 15 (medium shot), drifts to 45 (drone shot)
+        // Cinematic movement
         const dist = 15 + (t * 5.0); 
-        // Height: starts at 6, drifts to 25
         const height = 6 + (t * 3.0);
-        // Angle: starts behind (-0.2), slowly rotates
         const angle = -0.2 + (t * 0.2);
 
         target.set(
@@ -868,19 +1002,18 @@ function updateCamera(time, delta, leadDuck, packCenterZ) {
             winner.position.z + Math.cos(angle) * dist
         );
         
-        // Look slightly above winner to center them nicely
         look.copy(winner.position).add(new THREE.Vector3(0, 2, 0));
 
     } else if (!isRacing) {
+        // Countdown / Pre-race position
         target.set(0, 20, -35); look.set(0, 0, 10);
     } else {
-        // RACE CAM
+        // Normal race cam
         if (camAngle === 0) { target.set(leadDuck.position.x, 8, leadDuck.position.z - 15); look.set(leadDuck.position.x, 2, leadDuck.position.z + 20); } 
         else if (camAngle === 1) { target.set(25, 20, packCenterZ - 15); look.set(0, 0, packCenterZ + 40); } 
         else { target.set(-28, 8, leadDuck.position.z + 5); look.set(leadDuck.position.x, 2, leadDuck.position.z + 10); }
     }
     
-    // Smooth camera lerp
     camera.position.lerp(target, 4.0 * delta); 
     cameraLookAt.lerp(look, 4.0 * delta);
     camera.lookAt(cameraLookAt);
@@ -919,7 +1052,6 @@ function updateUI(leadDuck, sortedDucks, time) {
 function animate() {
     requestAnimationFrame(animate);
     const deltaReal = clock.getDelta();
-    // Use gameSpeed for game logic (ducks), use deltaReal for camera/UI
     const delta = deltaReal * gameSpeed;
     const time = clock.getElapsedTime();
     
@@ -944,8 +1076,6 @@ function animate() {
              const d1=ducks[i], d2=ducks[j];
              const dx=d1.position.x-d2.position.x, dz=d1.position.z-d2.position.z;
              const distSq=dx*dx+dz*dz;
-             
-             // HARD COLLISION
              if(distSq < 23.0) {
                  const dist=Math.sqrt(distSq);
                  if(dist < 0.001) { d1.position.x += 0.1; continue; }
@@ -963,7 +1093,7 @@ function animate() {
         // --- 1. FIRST FINISH LOGIC (Cinematic Trigger) ---
         if (!firstFinishTriggered && ducks.some(d => d.finished)) {
             firstFinishTriggered = true;
-            winnerFinishTime = time; // Mark time for camera
+            winnerFinishTime = time;
             
             sfxWinner.currentTime = 0;
             sfxWinner.play().catch(e => console.warn(e));
@@ -991,7 +1121,6 @@ function animate() {
     }
     
     if(leadDuck) {
-        // Pass deltaReal so camera stays smooth even if gameSpeed is slow
         updateCamera(time, deltaReal, leadDuck, (ducks.length>0 ? totalZ/ducks.length : 0));
         updateUI(leadDuck, ducks, time);
     }
