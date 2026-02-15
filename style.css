@@ -195,61 +195,62 @@ button:hover { background: white; transform: skewX(-10deg) translateY(-2px); box
     :root { font-size: 32px; } /* Double size for full 4K */
 }
 
-/* --- RESPONSIVE START SCREEN SCALING --- */
-/* This ensures the start screen scales perfectly with screen size */
+/* --- RESPONSIVE START SCREEN SCALING (Refined for 4K) --- */
+/* We now use 'vw' (Viewport Width) for both font-size and width.
+   This locks the aspect ratio of the UI to the width of the screen. */
 
 #start-screen {
-    /* Sets base size relative to viewport height (vh). 
-       Adjust '2.2vh' slightly up/down if you want the whole UI bigger/smaller. */
-    font-size: 2.2vh; 
+    /* Base font size is 1.2% of the screen width.
+       On 1920p -> ~23px.
+       On 4K (3840p) -> ~46px. */
+    font-size: 1.2vw; 
 }
 
 #start-screen .modal-content {
-    /* Width is now relative to the scalable font-size defined above.
-       30rem at 2.2vh equals roughly 40-50% of the screen height in width, 
-       maintaining the aspect ratio. */
-    width: 30rem; 
+    /* The panel will always take up exactly 40% of the screen width. */
+    width: 40vw; 
     
-    /* Remove any pixel-based limits that might choke it on 4K screens */
-    max-width: 90vw; 
+    /* CRITICAL: Remove any max-width caps that might be squeezing it on 4K */
+    max-width: none;
     min-width: auto;
     
-    /* Ensure padding scales too */
-    padding: 2rem; 
+    /* Padding scales with the font size */
+    padding: 2.5em; 
 }
 
 /* Ensure the title scales properly */
 #start-screen h1 {
-    font-size: 2.5em; /* Relative to container */
-    margin-bottom: 1em;
+    font-size: 2.8em; 
+    margin-bottom: 0.8em;
 }
 
 /* Ensure the duck list items scale */
 #duck-preview .preview-item {
-    font-size: 1em; /* Relative to container */
-    padding: 0.5em 0.8em;
-    margin-bottom: 0.4em;
-    height: auto; /* Allow height to grow with text */
+    font-size: 1.1em; 
+    padding: 0.6em 1em;
+    margin-bottom: 0.5em;
+    height: auto; 
 }
 
 #duck-preview .preview-num {
-    width: 1.8em;
-    height: 1.8em;
-    font-size: 1em;
-    line-height: 1.8em;
+    width: 2em;
+    height: 2em;
+    font-size: 0.9em;
+    line-height: 2em;
 }
 
 /* Scale the buttons */
 #start-screen button {
-    font-size: 1.2em;
-    padding: 0.8em 2em;
+    font-size: 1.3em;
+    padding: 0.8em 2.5em; /* Wider buttons */
     margin-top: 1.5em;
     height: auto;
+    width: 100%; /* Optional: Makes buttons fill the panel width */
 }
 
 /* Scale the race selector dropdown */
 #race-select {
-    font-size: 1em;
-    padding: 0.5em;
+    font-size: 1.2em;
+    padding: 0.6em;
     height: auto;
 }
