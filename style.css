@@ -194,3 +194,62 @@ button:hover { background: white; transform: skewX(-10deg) translateY(-2px); box
 @media screen and (min-width: 3840px) {
     :root { font-size: 32px; } /* Double size for full 4K */
 }
+
+/* --- RESPONSIVE START SCREEN SCALING --- */
+/* This ensures the start screen scales perfectly with screen size */
+
+#start-screen {
+    /* Sets base size relative to viewport height (vh). 
+       Adjust '2.2vh' slightly up/down if you want the whole UI bigger/smaller. */
+    font-size: 2.2vh; 
+}
+
+#start-screen .modal-content {
+    /* Width is now relative to the scalable font-size defined above.
+       30rem at 2.2vh equals roughly 40-50% of the screen height in width, 
+       maintaining the aspect ratio. */
+    width: 30rem; 
+    
+    /* Remove any pixel-based limits that might choke it on 4K screens */
+    max-width: 90vw; 
+    min-width: auto;
+    
+    /* Ensure padding scales too */
+    padding: 2rem; 
+}
+
+/* Ensure the title scales properly */
+#start-screen h1 {
+    font-size: 2.5em; /* Relative to container */
+    margin-bottom: 1em;
+}
+
+/* Ensure the duck list items scale */
+#duck-preview .preview-item {
+    font-size: 1em; /* Relative to container */
+    padding: 0.5em 0.8em;
+    margin-bottom: 0.4em;
+    height: auto; /* Allow height to grow with text */
+}
+
+#duck-preview .preview-num {
+    width: 1.8em;
+    height: 1.8em;
+    font-size: 1em;
+    line-height: 1.8em;
+}
+
+/* Scale the buttons */
+#start-screen button {
+    font-size: 1.2em;
+    padding: 0.8em 2em;
+    margin-top: 1.5em;
+    height: auto;
+}
+
+/* Scale the race selector dropdown */
+#race-select {
+    font-size: 1em;
+    padding: 0.5em;
+    height: auto;
+}
