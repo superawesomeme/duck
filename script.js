@@ -516,34 +516,33 @@ class Duck {
         scene.add(this.mesh);
     }
 
-    addNameLabel() {
-        const w = 512, h = 128;
+addNameLabel() {
+        // Width set to 160 to ensure "padding" on sides of the number
+        const w = 160, h = 128;
         const cvs = document.createElement('canvas'); cvs.width = w; cvs.height = h;
         const ctx = cvs.getContext('2d');
         const mainColor = '#' + this.color.toString(16).padStart(6, '0');
 
+        // Draw main dark background
         ctx.beginPath(); ctx.moveTo(30,0); ctx.lineTo(w,0); ctx.lineTo(w-30,h); ctx.lineTo(0,h);
         ctx.fillStyle = "rgba(10, 14, 23, 0.85)"; ctx.fill();
+        
+        // Draw colored accent strip (angled)
         ctx.beginPath(); ctx.moveTo(30,0); ctx.lineTo(60,0); ctx.lineTo(30,h); ctx.lineTo(0,h);
         ctx.fillStyle = mainColor; ctx.fill();
 
-        ctx.fillStyle = "#ffffff"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        // Draw Number Only (No #)
+        ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.shadowColor="rgba(0,0,0,0.8)"; ctx.shadowBlur=4;
-        ctx.font = "bold 70px 'Rajdhani'";
-        ctx.fillText(`#${this.id + 1}`, 80, h/2);
+        ctx.font = "bold 80px 'Rajdhani'";
         
-        const nameStr = this.name.toUpperCase();
-        let fontSize = 60;
-        ctx.font = `${fontSize}px 'Rajdhani'`;
-        const maxTextW = 290;
-        while (ctx.measureText(nameStr).width > maxTextW && fontSize > 20) {
-            fontSize -= 2;
-            ctx.font = `${fontSize}px 'Rajdhani'`;
-        }
-        ctx.fillText(nameStr, 190, h/2);
+        // Removed the '#' character here
+        ctx.fillText(`${this.id + 1}`, 95, h/2 + 2);
 
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(cvs), depthWrite: false, depthTest: true}));
-        sprite.position.set(0, 7.5, 0); sprite.scale.set(10, 2.5, 1);
+        sprite.position.set(0, 7.5, 0); 
+        // Scale adapted for the new box size
+        sprite.scale.set(3.2, 2.5, 1);
         sprite.frustumCulled = false; 
         sprite.renderOrder = 100;     
         this.mesh.add(sprite);
@@ -904,7 +903,7 @@ function runCountdownSequence() {
     
     const showNum = (num, color) => {
         cd.innerHTML = `<div style="
-            background: rgba(0, 14, 23, 0.7);
+            background: #ED0778;
             padding: 20px 60px;
             transform: skewX(-15deg);
             border-left: 8px solid ${color};
@@ -925,7 +924,7 @@ function runCountdownSequence() {
 
     const timer = setInterval(() => {
         if(count > 0) {
-            showNum(count, '#ED0778'); // hot pink
+            showNum(count, '#FFFFFF');
             raceAudio.playCountdown(count);
             count--;
         } else {
@@ -987,13 +986,18 @@ function updateCamera(time, delta, leadDuck, packCenterZ) {
     if (time > camTimer + 10) { camTimer = time; camAngle = (camAngle + 1) % 3; }
     let target = cinematicTarget, look = cinematicLook; 
     
+    // --- COMPOSITION OFFSET ---
+    // We want ducks (X=0) to be on the RIGHT side of the screen.
+    // When looking backwards (Frontal View), we shift camera LEFT (Negative X).
+    let viewShiftX = -12; 
+
     if (firstFinishTriggered) {
         const winner = ducks[0]; // Leader is winner
         const t = time - winnerFinishTime;
 
-        // Cinematic movement
-        const dist = 15 + (t * 5.0); 
-        const height = 6 + (t * 3.0);
+        // Cinematic movement (Orbiting the winner)
+        const dist = 18 + (t * 5.0); 
+        const height = 7 + (t * 3.0);
         const angle = -0.2 + (t * 0.2);
 
         target.set(
@@ -1001,17 +1005,45 @@ function updateCamera(time, delta, leadDuck, packCenterZ) {
             height,
             winner.position.z + Math.cos(angle) * dist
         );
-        
         look.copy(winner.position).add(new THREE.Vector3(0, 2, 0));
 
     } else if (!isRacing) {
-        // Countdown / Pre-race position
-        target.set(0, 20, -35); look.set(0, 0, 10);
+        // Countdown: Frontal view, shifted so ducks are on right
+        target.set(viewShiftX, 15, 40); 
+        look.set(viewShiftX, 0, -10); 
     } else {
-        // Normal race cam
-        if (camAngle === 0) { target.set(leadDuck.position.x, 8, leadDuck.position.z - 15); look.set(leadDuck.position.x, 2, leadDuck.position.z + 20); } 
-        else if (camAngle === 1) { target.set(25, 20, packCenterZ - 15); look.set(0, 0, packCenterZ + 40); } 
-        else { target.set(-28, 8, leadDuck.position.z + 5); look.set(leadDuck.position.x, 2, leadDuck.position.z + 10); }
+        const distRemaining = CONFIG.raceDistance - leadDuck.position.z;
+
+        // --- FINAL SPRINT LOGIC (Last 100m) ---
+        // Changed to 100 as requested
+        if (distRemaining <= 100) {
+            // BEHIND (Chase Cam) - Looking Forward (+Z)
+            // When looking Forward, "Right" on screen is "Left" in World.
+            // To put ducks on the Right of screen, we must position camera to the RIGHT (Positive X).
+            viewShiftX = 12; 
+
+            target.set(leadDuck.position.x + viewShiftX, 12, leadDuck.position.z - 45);
+            look.set(leadDuck.position.x + viewShiftX, 2, leadDuck.position.z + 50);
+
+        } else {
+            // --- MAIN RACE: FRONTAL VIEWS (Looking -Z) ---
+            
+            if (camAngle === 0) { 
+                // Angle 1: Frontal Close
+                target.set(leadDuck.position.x + viewShiftX, 9, leadDuck.position.z + 45); 
+                look.set(leadDuck.position.x + viewShiftX, 2, leadDuck.position.z - 5); 
+            } 
+            else if (camAngle === 1) { 
+                // Angle 2: Frontal Pack (Wide)
+                target.set(viewShiftX, 22, packCenterZ + 65); 
+                look.set(viewShiftX, 0, packCenterZ - 10); 
+            } 
+            else { 
+                // Angle 3: Side/Front Dynamic
+                target.set(-35, 8, leadDuck.position.z + 30); 
+                look.set(5, 3, leadDuck.position.z); 
+            }
+        }
     }
     
     camera.position.lerp(target, 4.0 * delta); 
