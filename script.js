@@ -329,7 +329,7 @@ const barkTex = textureLoader.load('models/texture/bark.jpg');
 
 // Gradient Grass
 const matTop = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.8, flatShading: false });
-setupGradientMaterial(matTop, 0x7CB342, 0xDCEDC8, -15, 15);
+setupGradientMaterial(matTop, 0x2E7D32, 0x4CAF50, -15, 15);
 
 const matSide = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, map: mudTex, roughness: 0.9, flatShading: false });
 const bankMaterials = [ matSide, matSide, matTop, matSide, matSide, matSide ];
@@ -398,14 +398,16 @@ function createTrackSiding(imagePath, x, z, side) {
 const adImages = ["images/sidings/1.jpg", "images/sidings/2.jpg", "images/sidings/3.jpg", "images/sidings/4.jpg"];
 const sidingInterval = 60; 
 
-for(let z = -105; z < CONFIG.raceDistance + 300; z += 15) {
-    if (z > -50 && Math.abs(z % sidingInterval) < 0.1) {
-        const img = adImages[Math.floor(Math.random() * adImages.length)];
-        landscapeGroup.add(createTrackSiding(img, -85, z, -1));
-        const img2 = adImages[Math.floor(Math.random() * adImages.length)];
-        landscapeGroup.add(createTrackSiding(img2, 85, z, 1));
-        continue; 
-    }
+// Place sidings at fixed intervals along the race track
+for(let z = 0; z <= CONFIG.raceDistance; z += sidingInterval) {
+    const img = adImages[Math.floor(Math.random() * adImages.length)];
+    landscapeGroup.add(createTrackSiding(img, -85, z, -1));
+    const img2 = adImages[Math.floor(Math.random() * adImages.length)];
+    landscapeGroup.add(createTrackSiding(img2, 85, z, 1));
+}
+
+// Place trees along the full length including behind the start line
+for(let z = -390; z < CONFIG.raceDistance + 300; z += 15) {
     if(Math.random() > 0.2) landscapeGroup.add(createCartoonTree(-110 - Math.random()*150, z));
     if(Math.random() > 0.2) landscapeGroup.add(createCartoonTree(110 + Math.random()*150, z));
 }
@@ -436,6 +438,14 @@ const finishLineStrip = new THREE.Mesh(finishLineGeo, finishLineMat);
 finishLineStrip.rotation.x = -Math.PI / 2;
 finishLineStrip.position.set(0, 0.05, CONFIG.raceDistance);
 scene.add(finishLineStrip);
+
+// Water Start Line Strip
+const startLineGeo = new THREE.PlaneGeometry(160, 4);
+const startLineMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+const startLineStrip = new THREE.Mesh(startLineGeo, startLineMat);
+startLineStrip.rotation.x = -Math.PI / 2;
+startLineStrip.position.set(0, 0.05, 0);
+scene.add(startLineStrip);
 
 // Buoys
 const buoyGeo = new THREE.SphereGeometry(1.5, 16, 16);
