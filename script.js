@@ -5,7 +5,7 @@ const CONFIG = {
     duckCount: 8,
     raceDistance: 800,
     targetDuration: 58,
-    waterColor: 0x01579B,
+    waterColor: 0x0044aa,
     waterHighlight: 0x29B6F6,
 };
 
@@ -28,10 +28,10 @@ let gameSpeed = 1.0;
 
 // Flags for race progression
 let isRacing = false;
-let isCountingDown = false; // New state for countdown
+let isCountingDown = false;
 let raceEnded = false;
 let firstFinishTriggered = false; 
-let winnerFinishTime = 0; // Timer for cinematic camera
+let winnerFinishTime = 0;
 
 // -- AUDIO SETUP --
 const sfxRiver = new Audio('audio/river_looped.mp3');
@@ -83,7 +83,7 @@ class RaceAudio {
     playCountdown(step) {
         this.init();
         if (step > 0) {
-            this.playTone(440, 'triangle', 0.3); // Low Beep for 3, 2, 1
+            this.playTone(440, 'triangle', 0.3);
         }
     }
 }
@@ -118,7 +118,6 @@ function loadRaceData() {
     if (data) {
         storedRaces = JSON.parse(data);
     } else {
-        // Fallback to DEFAULT_RACES from data.js
         if (typeof DEFAULT_RACES !== 'undefined') {
             storedRaces = JSON.parse(JSON.stringify(DEFAULT_RACES));
         } else {
@@ -163,25 +162,31 @@ function loadAboutInfo() {
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 
-// CARTOON SKY
-scene.background = new THREE.Color(0x4FC3F7); 
-scene.fog = new THREE.Fog(0x4FC3F7, 40, 300);
-
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 20000);
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
-// Lighting for Richness & Depth
-const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x445566, 1.15 );
-scene.add( hemiLight );
+// --- SKY ---
+scene.background = new THREE.Color(0x4FC3F7);
+scene.fog = new THREE.Fog(0x4FC3F7, 40, 300);
+
+// --- SUN (for water reflections only) ---
+const sun = new THREE.Vector3();
+const sunPhi = THREE.MathUtils.degToRad(90 - 25);
+const sunTheta = THREE.MathUtils.degToRad(180 + 40);
+sun.setFromSphericalCoords(1, sunPhi, sunTheta);
+
+// --- LIGHTING ---
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x445566, 1.15);
+scene.add(hemiLight);
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
 dirLight.position.set(50, 150, 50);
 dirLight.castShadow = true;
-dirLight.shadow.radius = 4; // Soft Shadows
+dirLight.shadow.radius = 4;
 dirLight.shadow.mapSize.width = 4096;
 dirLight.shadow.mapSize.height = 4096;
 dirLight.shadow.camera.near = 0.1;
@@ -193,86 +198,33 @@ dirLight.shadow.camera.bottom = -200;
 dirLight.shadow.bias = -0.0005;
 scene.add(dirLight);
 
-// --- SUN FLARE (FAKE BLOOM) ---
-const flareCanvas = document.createElement('canvas');
-flareCanvas.width = 64; flareCanvas.height = 64;
-const fCtx = flareCanvas.getContext('2d');
-const grd = fCtx.createRadialGradient(32,32,0,32,32,32);
-grd.addColorStop(0, 'rgba(255, 255, 255, 1)');
-grd.addColorStop(0.2, 'rgba(255, 255, 200, 0.4)');
-grd.addColorStop(1, 'rgba(255, 255, 255, 0)');
-fCtx.fillStyle = grd; fCtx.fillRect(0,0,64,64);
-const flareTex = new THREE.CanvasTexture(flareCanvas);
-const flareMat = new THREE.SpriteMaterial({ map: flareTex, transparent: true, blending: THREE.AdditiveBlending });
-const sunFlare = new THREE.Sprite(flareMat);
-sunFlare.scale.set(80, 80, 1);
-sunFlare.position.set(50, 150, 50); // Match DirLight pos
-scene.add(sunFlare);
-
-// GLOBAL TEXTURE LOADER
 const textureLoader = new THREE.TextureLoader();
 
-/**
- * SHADERS & MATERIALS
- */
-const waterVertexShader = `
-    uniform float time;
-    varying vec2 vUv;
-    varying float vElevation;
-    #include <fog_pars_vertex>
-    void main() {
-        vUv = uv;
-        vec3 newPos = position;
-        float wave1 = sin(position.x * 0.1 + time * 0.5) * 0.5;
-        float wave2 = sin(position.y * 0.15 + time * 0.7) * 0.5;
-        float wave3 = sin(position.x * 0.4 + position.y * 0.2 + time * 2.0) * 0.15;
-        float totalElevation = wave1 + wave2 + wave3;
-        newPos.z += totalElevation;
-        vElevation = totalElevation;
-        vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        #include <fog_vertex>
+// --- OCEAN WATER ---
+const waterGeometry = new THREE.PlaneGeometry(2000, 4000);
+const water = new THREE.Water(
+    waterGeometry,
+    {
+        textureWidth: 512,
+        textureHeight: 512,
+        waterNormals: textureLoader.load(
+            'https://threejs.org/examples/textures/waternormals.jpg',
+            function(texture) {
+                texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            }
+        ),
+        sunDirection: sun.clone().normalize(),
+        sunColor: 0xffffff,
+        waterColor: 0x001e3f,
+        distortionScale: 3.7,
+        fog: true
     }
-`;
-
-const waterFragmentShader = `
-    uniform vec3 colorDeep;
-    uniform vec3 colorSurface;
-    varying float vElevation;
-    #include <fog_pars_fragment>
-    void main() {
-        float mixStrength = (vElevation + 1.0) * 0.4;
-        vec3 color = mix(colorDeep, colorSurface, mixStrength);
-        float glitter = sin(vElevation * 20.0) * cos(vElevation * 15.0);
-        float specular = step(0.9, glitter); 
-        color += vec3(1.0) * specular * 0.4; // Increased glitter for Bloom look
-        gl_FragColor = vec4(color, 0.95);
-        #include <fog_fragment>
-    }
-`;
-
-const waterMat = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([
-        THREE.UniformsLib['fog'],
-        {
-            time: { value: 0 },
-            colorDeep: { value: new THREE.Color(CONFIG.waterColor) },
-            colorSurface: { value: new THREE.Color(CONFIG.waterHighlight) }
-        }
-    ]),
-    vertexShader: waterVertexShader,
-    fragmentShader: waterFragmentShader,
-    transparent: true,
-    side: THREE.DoubleSide,
-    fog: true
-});
-
-const water = new THREE.Mesh(new THREE.PlaneGeometry(160, 4000, 100, 400), waterMat);
+);
 water.rotation.x = -Math.PI / 2;
 water.position.set(0, -0.5, CONFIG.raceDistance / 2);
 scene.add(water);
 
-// --- HELPER: Procedural Gradient Material (Robust Injection) ---
+// --- HELPER: Procedural Gradient Material ---
 function setupGradientMaterial(material, colorBottomHex, colorTopHex, minY, maxY) {
     material.onBeforeCompile = (shader) => {
         shader.uniforms.cBottom = { value: new THREE.Color(colorBottomHex) };
@@ -307,7 +259,7 @@ function setupGradientMaterial(material, colorBottomHex, colorTopHex, minY, maxY
     material.needsUpdate = true;
 }
 
-// --- HELPER: Procedural Concrete Texture ---
+// --- Procedural Concrete Texture ---
 const concreteCanvas = document.createElement('canvas');
 concreteCanvas.width = 128; concreteCanvas.height = 128;
 const cCtx = concreteCanvas.getContext('2d');
@@ -319,7 +271,7 @@ for(let i=0; i<1000; i++) {
 const concreteTex = new THREE.CanvasTexture(concreteCanvas);
 concreteTex.wrapS = THREE.RepeatWrapping; concreteTex.wrapT = THREE.RepeatWrapping;
 
-// -- BANKS (BLOCK STYLE) --
+// -- BANKS --
 const landscapeGroup = new THREE.Group();
 scene.add(landscapeGroup);
 
@@ -327,7 +279,6 @@ const mudTex = textureLoader.load('models/texture/mud.jpg');
 mudTex.wrapS = THREE.RepeatWrapping; mudTex.wrapT = THREE.RepeatWrapping; mudTex.repeat.set(50, 1); 
 const barkTex = textureLoader.load('models/texture/bark.jpg');
 
-// Gradient Grass
 const matTop = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.8, flatShading: false });
 setupGradientMaterial(matTop, 0x2E7D32, 0x4CAF50, -15, 15);
 
@@ -348,7 +299,6 @@ rightBank.position.set(240, centerY, CONFIG.raceDistance / 2); rightBank.receive
 const trunkGeo = new THREE.CylinderGeometry(1.5, 2, 6, 8);
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, map: barkTex, flatShading: true, roughness: 0.8 });
 
-// Rounder Trees (Detail 1) with Gradient
 const folGeo = new THREE.IcosahedronGeometry(7, 1);
 const folMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, flatShading: false, roughness: 0.8 });
 setupGradientMaterial(folMat, 0x43A047, 0xCDDC39, -4, 6);
@@ -365,13 +315,11 @@ function createCartoonTree(x, z) {
     return tree;
 }
 
-// Track Siding Logic (Textured Concrete)
 function createTrackSiding(imagePath, x, z, side) {
     const group = new THREE.Group();
     const length = 55; height = 10; depth = 2;
     const baseGeo = new THREE.BoxGeometry(depth, height, length);
     
-    // Concrete Texture
     const baseMat = new THREE.MeshStandardMaterial({ 
         map: concreteTex,
         roughness: 0.9,
@@ -422,7 +370,6 @@ const checkTex = new THREE.CanvasTexture(checkCanvas); checkTex.magFilter = THRE
 const fBanner = new THREE.Mesh(new THREE.BoxGeometry(72, 8, 2), new THREE.MeshStandardMaterial({map: checkTex}));
 fBanner.position.set(0, 22, CONFIG.raceDistance); fBanner.castShadow = true;
 
-// Bark Texture for Finish poles
 const poleMat = new THREE.MeshStandardMaterial({ map: barkTex, color: 0xFFFFFF });
 const p1 = new THREE.Mesh(new THREE.BoxGeometry(2, 25, 2), poleMat);
 p1.position.set(-35, 12.5, CONFIG.raceDistance);
@@ -455,40 +402,70 @@ for(let i=0; i<CONFIG.raceDistance; i+=50) {
     const b2 = new THREE.Mesh(buoyGeo, buoyMat); b2.position.set(35, 0, i); scene.add(b2);
 }
 
-/**
- * WAKE EFFECT
- */
-const wakeGroup = new THREE.Group();
-scene.add(wakeGroup);
-// FIX: depthWrite: false prevents the ring from "punching a hole" in the water
-const wakeGeo = new THREE.RingGeometry(0.5, 1.2, 8);
-const wakeMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
-let wakes = [];
-
-function spawnWake(x, z, scale) {
-    const wake = new THREE.Mesh(wakeGeo, wakeMat.clone());
-    wake.position.set(x, 0.05, z); wake.rotation.x = -Math.PI / 2; wake.scale.set(scale, scale, 1);
-    wakeGroup.add(wake); wakes.push({ mesh: wake, age: 0 });
-}
-
-function updateWakes(delta) {
-    for (let i = wakes.length - 1; i >= 0; i--) {
-        const w = wakes[i]; w.age += delta;
-        const s = w.mesh.scale.x + delta * 2.0; w.mesh.scale.set(s, s, 1);
-        w.mesh.material.opacity = 0.5 - (w.age * 0.5); 
-        if (w.age > 1.0) { wakeGroup.remove(w.mesh); w.mesh.geometry.dispose(); wakes.splice(i, 1); }
-    }
-}
-
-/**
- * DUCK MODEL & LOGIC
- */
+// --- GLTF LOADER SETUP ---
 let loadedDuckModel = null;
 const loader = new THREE.GLTFLoader();
 const dracoLoader = new THREE.DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
 loader.setDRACOLoader(dracoLoader);
 
+/**
+ * WAKE EFFECT — Soft Blurry Wakes
+ */
+const wakeGroup = new THREE.Group();
+scene.add(wakeGroup);
+
+const wakeCanvas = document.createElement('canvas');
+wakeCanvas.width = 64; wakeCanvas.height = 64;
+const wakeCtx = wakeCanvas.getContext('2d');
+const wakeGrad = wakeCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+wakeGrad.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+wakeGrad.addColorStop(0.3, 'rgba(255, 255, 255, 0.3)');
+wakeGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0.1)');
+wakeGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+wakeCtx.fillStyle = wakeGrad;
+wakeCtx.fillRect(0, 0, 64, 64);
+const wakeTex = new THREE.CanvasTexture(wakeCanvas);
+
+const wakeGeo = new THREE.PlaneGeometry(3, 3);
+const wakeMat = new THREE.MeshBasicMaterial({ 
+    map: wakeTex, 
+    transparent: true, 
+    opacity: 0.7, 
+    side: THREE.DoubleSide, 
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+});
+let wakes = [];
+
+function spawnWake(x, z, scale) {
+    const wake = new THREE.Mesh(wakeGeo, wakeMat.clone());
+    wake.position.set(x, 0.05, z); 
+    wake.rotation.x = -Math.PI / 2; 
+    wake.scale.set(scale, scale, 1);
+    wakeGroup.add(wake); 
+    wakes.push({ mesh: wake, age: 0 });
+}
+
+function updateWakes(delta) {
+    for (let i = wakes.length - 1; i >= 0; i--) {
+        const w = wakes[i]; 
+        w.age += delta;
+        const s = w.mesh.scale.x + delta * 3.0; 
+        w.mesh.scale.set(s, s, 1);
+        w.mesh.material.opacity = 0.7 - (w.age * 0.7); 
+        if (w.age > 1.0) { 
+            wakeGroup.remove(w.mesh); 
+            w.mesh.geometry.dispose(); 
+            w.mesh.material.dispose();
+            wakes.splice(i, 1); 
+        }
+    }
+}
+
+/**
+ * DUCK MODEL & LOGIC
+ */
 loader.load('models/duck.glb', (gltf) => {
     loadedDuckModel = gltf.scene;
     loadedDuckModel.scale.set(20, 20, 20);
@@ -520,38 +497,30 @@ class Duck {
         this.buildModel();
         this.addNameLabel();
         
-        // Update mesh position immediately for countdown visibility
         this.mesh.position.copy(this.position);
         
         scene.add(this.mesh);
     }
 
-addNameLabel() {
-        // Width set to 160 to ensure "padding" on sides of the number
+    addNameLabel() {
         const w = 160, h = 128;
         const cvs = document.createElement('canvas'); cvs.width = w; cvs.height = h;
         const ctx = cvs.getContext('2d');
         const mainColor = '#' + this.color.toString(16).padStart(6, '0');
 
-        // Draw main dark background
         ctx.beginPath(); ctx.moveTo(30,0); ctx.lineTo(w,0); ctx.lineTo(w-30,h); ctx.lineTo(0,h);
         ctx.fillStyle = "rgba(10, 14, 23, 0.85)"; ctx.fill();
         
-        // Draw colored accent strip (angled)
         ctx.beginPath(); ctx.moveTo(30,0); ctx.lineTo(60,0); ctx.lineTo(30,h); ctx.lineTo(0,h);
         ctx.fillStyle = mainColor; ctx.fill();
 
-        // Draw Number Only (No #)
         ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.shadowColor="rgba(0,0,0,0.8)"; ctx.shadowBlur=4;
         ctx.font = "bold 80px 'Rajdhani'";
-        
-        // Removed the '#' character here
         ctx.fillText(`${this.id + 1}`, 95, h/2 + 2);
 
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(cvs), depthWrite: false, depthTest: true}));
         sprite.position.set(0, 7.5, 0); 
-        // Scale adapted for the new box size
         sprite.scale.set(3.2, 2.5, 1);
         sprite.frustumCulled = false; 
         sprite.renderOrder = 100;     
@@ -778,7 +747,6 @@ function stopFireworks() {
 /**
  * UI & INTERACTION
  */
-// COUNTDOWN OVERLAY
 const cdDiv = document.createElement('div');
 cdDiv.id = 'countdown-overlay';
 cdDiv.style.cssText = `
@@ -881,11 +849,9 @@ resetDataBtn.addEventListener('click', () => {
     configModal.classList.add('hidden');
 });
 
-// START BUTTON - Updated for Countdown
 document.getElementById('start-btn').addEventListener('click', () => {
     startScreen.classList.add('hidden');
     
-    // Position Camera for Start
     camera.position.set(0, 15, -30);
     camera.lookAt(0, 0, 50);
     
@@ -939,7 +905,6 @@ function runCountdownSequence() {
             count--;
         } else {
             clearInterval(timer);
-            // On GO: No visual word, start the original sound
             cd.innerHTML = "";
             cd.style.display = 'none';
             
@@ -984,7 +949,7 @@ loadRaceData();
 loadAboutInfo();
 
 /**
- * MAIN LOOP
+ * CAMERA SYSTEM
  */
 const clock = new THREE.Clock();
 let camAngle = 0, camTimer = 0;
@@ -992,22 +957,61 @@ let cameraLookAt = new THREE.Vector3(0,0,50);
 let cinematicTarget = new THREE.Vector3();
 let cinematicLook = new THREE.Vector3();
 
+const LB_SCREEN_FRACTION = 0.35;
+const DUCK_PADDING = 8;
+const MIN_CAM_DIST_Z = 20;
+const MAX_CAM_DIST_Z = 50;
+
+function getDuckBounds() {
+    let minX = Infinity, maxX = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    
+    for (const d of ducks) {
+        if (d.position.x < minX) minX = d.position.x;
+        if (d.position.x > maxX) maxX = d.position.x;
+        if (d.position.z < minZ) minZ = d.position.z;
+        if (d.position.z > maxZ) maxZ = d.position.z;
+    }
+    
+    return {
+        centerX: (minX + maxX) / 2,
+        centerZ: (minZ + maxZ) / 2,
+        spreadX: (maxX - minX) + DUCK_PADDING * 2,
+        spreadZ: (maxZ - minZ) + DUCK_PADDING * 2,
+        minX, maxX, minZ, maxZ
+    };
+}
+
+function calcDistanceForWidth(worldWidth, screenFraction) {
+    const fovRad = THREE.MathUtils.degToRad(camera.fov);
+    const d = worldWidth / (screenFraction * 2 * Math.tan(fovRad / 2) * camera.aspect);
+    return Math.max(MIN_CAM_DIST_Z, Math.min(MAX_CAM_DIST_Z, d));
+}
+
+function applyViewOffset() {
+    const fullW = window.innerWidth;
+    const fullH = window.innerHeight;
+    const shiftPixels = -fullW * (LB_SCREEN_FRACTION / 2);
+    camera.setViewOffset(fullW, fullH, shiftPixels, 0, fullW, fullH);
+}
+
 function updateCamera(time, delta, leadDuck, packCenterZ) {
     if (time > camTimer + 10) { camTimer = time; camAngle = (camAngle + 1) % 3; }
     let target = cinematicTarget, look = cinematicLook; 
-    
-    // --- COMPOSITION OFFSET ---
-    // We want ducks (X=0) to be on the RIGHT side of the screen.
-    // When looking backwards (Frontal View), we shift camera LEFT (Negative X).
-    let viewShiftX = -12; 
+
+    applyViewOffset();
+    camera.fov = 50;
+    camera.updateProjectionMatrix();
+
+    const bounds = getDuckBounds();
+    const availableFraction = 1.0 - LB_SCREEN_FRACTION;
 
     if (firstFinishTriggered) {
-        const winner = ducks[0]; // Leader is winner
+        const winner = ducks[0];
         const t = time - winnerFinishTime;
 
-        // Cinematic movement (Orbiting the winner)
-        const dist = 18 + (t * 5.0); 
-        const height = 7 + (t * 3.0);
+        const dist = 14 + (t * 3.0); 
+        const height = 5 + (t * 2.0);
         const angle = -0.2 + (t * 0.2);
 
         target.set(
@@ -1018,47 +1022,57 @@ function updateCamera(time, delta, leadDuck, packCenterZ) {
         look.copy(winner.position).add(new THREE.Vector3(0, 2, 0));
 
     } else if (!isRacing) {
-        // Countdown: Frontal view, shifted so ducks are on right
-        target.set(viewShiftX, 15, 40); 
-        look.set(viewShiftX, 0, -10); 
+        const fitDist = calcDistanceForWidth(bounds.spreadX, availableFraction);
+        target.set(bounds.centerX, Math.max(10, fitDist * 0.4), bounds.centerZ + fitDist);
+        look.set(bounds.centerX, 0, bounds.centerZ);
+
     } else {
         const distRemaining = CONFIG.raceDistance - leadDuck.position.z;
 
-        // --- FINAL SPRINT LOGIC (Last 100m) ---
-        // Changed to 100 as requested
         if (distRemaining <= 100) {
-            // BEHIND (Chase Cam) - Looking Forward (+Z)
-            // When looking Forward, "Right" on screen is "Left" in World.
-            // To put ducks on the Right of screen, we must position camera to the RIGHT (Positive X).
-            viewShiftX = 12; 
-
-            target.set(leadDuck.position.x + viewShiftX, 12, leadDuck.position.z - 45);
-            look.set(leadDuck.position.x + viewShiftX, 2, leadDuck.position.z + 50);
-
-        } else {
-            // --- MAIN RACE: FRONTAL VIEWS (Looking -Z) ---
+            const fitDist = calcDistanceForWidth(bounds.spreadX, availableFraction);
+            target.set(bounds.centerX, 8, leadDuck.position.z - fitDist * 0.6);
+            look.set(bounds.centerX, 1, leadDuck.position.z + 20);
             
-            if (camAngle === 0) { 
-                // Angle 1: Frontal Close
-                target.set(leadDuck.position.x + viewShiftX, 9, leadDuck.position.z + 45); 
-                look.set(leadDuck.position.x + viewShiftX, 2, leadDuck.position.z - 5); 
-            } 
-            else if (camAngle === 1) { 
-                // Angle 2: Frontal Pack (Wide)
-                target.set(viewShiftX, 22, packCenterZ + 65); 
-                look.set(viewShiftX, 0, packCenterZ - 10); 
-            } 
-            else { 
-                // Angle 3: Side/Front Dynamic
-                target.set(-35, 8, leadDuck.position.z + 30); 
-                look.set(5, 3, leadDuck.position.z); 
+        } else {
+            const fitDist = calcDistanceForWidth(bounds.spreadX, availableFraction);
+            
+            if (camAngle === 0) {
+                const camHeight = Math.max(6, fitDist * 0.25);
+                target.set(bounds.centerX, camHeight, leadDuck.position.z + fitDist);
+                look.set(bounds.centerX, 1, leadDuck.position.z);
+            }
+            else if (camAngle === 1) {
+                const camHeight = Math.max(10, fitDist * 0.45);
+                target.set(bounds.centerX, camHeight, bounds.centerZ + fitDist * 1.1);
+                look.set(bounds.centerX, 0, bounds.centerZ);
+            }
+            else {
+                const camHeight = Math.max(6, fitDist * 0.25);
+                target.set(bounds.minX - fitDist * 0.4, camHeight, leadDuck.position.z + fitDist * 0.6);
+                look.set(bounds.centerX + 5, 1, leadDuck.position.z);
             }
         }
     }
     
-    camera.position.lerp(target, 4.0 * delta); 
-    cameraLookAt.lerp(look, 4.0 * delta);
+    camera.position.lerp(target, 3.5 * delta); 
+    cameraLookAt.lerp(look, 3.5 * delta);
     camera.lookAt(cameraLookAt);
+}
+
+/**
+ * Lighten a hex color by a percentage (0-1).
+ */
+function lightenColor(hex, amount) {
+    let r = (hex >> 16) & 255;
+    let g = (hex >> 8) & 255;
+    let b = hex & 255;
+    
+    r = Math.min(255, Math.round(r + (255 - r) * amount));
+    g = Math.min(255, Math.round(g + (255 - g) * amount));
+    b = Math.min(255, Math.round(b + (255 - b) * amount));
+    
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
 function updateUI(leadDuck, sortedDucks, time) {
@@ -1074,9 +1088,7 @@ function updateUI(leadDuck, sortedDucks, time) {
         const r=(d.color>>16)&255, g=(d.color>>8)&255, b=d.color&255;
         const txtCol = (((r*299)+(g*587)+(b*114))/1000) >= 128 ? '#000' : '#fff';
         
-        let nameTextColor = hexColor;
-        if(d.id === 5) nameTextColor = '#D69EFC'; 
-        if(d.id === 6) nameTextColor = '#B0BEC5'; 
+        const nameTextColor = lightenColor(d.color, 0.4);
 
         html += `
         <div class="${rowClass}">
@@ -1097,7 +1109,8 @@ function animate() {
     const delta = deltaReal * gameSpeed;
     const time = clock.getElapsedTime();
     
-    water.material.uniforms.time.value = time;
+    // Animate ocean water
+    water.material.uniforms['time'].value += deltaReal;
     
     const flashIntensity = (Math.sin(time * 3) + 1) * 0.5; 
     buoyMat.emissiveIntensity = 0.2 + (flashIntensity * 0.8);
@@ -1132,7 +1145,6 @@ function animate() {
         ducks.sort((a,b) => (a.finished&&b.finished)?a.finishTime-b.finishTime : (a.finished?-1 : (b.finished?1 : b.position.z-a.position.z)));
         leadDuck = ducks[0];
 
-        // --- 1. FIRST FINISH LOGIC (Cinematic Trigger) ---
         if (!firstFinishTriggered && ducks.some(d => d.finished)) {
             firstFinishTriggered = true;
             winnerFinishTime = time;
@@ -1143,7 +1155,6 @@ function animate() {
             startFireworks(leadDuck.color);
         }
 
-        // --- 2. LAST FINISH LOGIC (Trigger Menu) ---
         if (ducks.every(d => d.finished) && !raceEnded) {
             raceEnded = true;
             
@@ -1151,9 +1162,7 @@ function animate() {
             
             winnerText.innerText = `WINNER: #${trueWinner.id + 1} ${trueWinner.name.toUpperCase()}!`;
             
-            let winnerTextColor = '#' + trueWinner.color.toString(16).padStart(6,'0');
-            if (trueWinner.id === 5) winnerTextColor = '#D69EFC'; 
-            if (trueWinner.id === 6) winnerTextColor = '#B0BEC5'; 
+            const winnerTextColor = lightenColor(trueWinner.color, 0.4);
             
             winnerText.style.color = winnerTextColor;
             setTimeout(() => { endScreen.classList.remove('hidden'); }, 2000);
@@ -1171,6 +1180,8 @@ function animate() {
 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
+    applyViewOffset();
+    camera.fov = 50;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     resizeCanvas(); 
