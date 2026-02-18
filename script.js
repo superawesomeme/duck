@@ -343,7 +343,7 @@ function createTrackSiding(imagePath, x, z, side) {
 }
 
 // POPULATE WORLD
-const adImages = ["images/sidings/1.jpg", "images/sidings/2.jpg", "images/sidings/3.jpg", "images/sidings/4.jpg"];
+const adImages = ["images/sidings/1.jpg", "images/sidings/2.jpg", "images/sidings/3.jpg", "images/sidings/4.jpg", "images/sidings/5.jpg", "images/sidings/6.jpg", "images/sidings/7.jpg", "images/sidings/8.jpg", "images/sidings/9.jpg", "images/sidings/10.jpg"];
 const sidingInterval = 60; 
 
 // Place sidings at fixed intervals along the race track
@@ -1186,5 +1186,6 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     resizeCanvas(); 
 });
+
 
 animate();
