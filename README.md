@@ -1,6 +1,6 @@
 # Duck Racing Simulator
 
-**Version 0.1**
+**Version 0.2**
 
 Developed for Picket Piece Social Club, this is a real-time 3D racing simulation powered by Three.js and WebGL. Features include dynamic water physics, custom event management, and live telemetry tracking.
 
